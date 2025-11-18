@@ -65,4 +65,61 @@ QA_TTC1_DIVIPOLA <- read_csv(paste0("DATA/CENS/QA_TTC1_DIVIPOLA.CSV"),
                              show_col_types = FALSE,
                              locale = locale(encoding = "Latin1"))
 
+# Ver los nombres de las columnas de QA_TTC1_DIVIPOLA
+cat("Columnas de QA_TTC1_DIVIPOLA:\n")
+print(names(QA_TTC1_DIVIPOLA))
+
+#Identificar grupos, cantidad y usuarios en los formatos TC1 de atenea
+
+# Leer archivo TC1 de ATENEA para enero 2024
+tc1_atenea_enero <- suppressWarnings(read_csv("DATA/ATENEA/2024/2024_01_AFA_FORMATO_TC1.csv",
+                                              show_col_types = FALSE,
+                                              locale = locale(encoding = "Latin1")))
+
+# Crear dataframe con NIU y CODIGO_DANE_NIU
+df_atenea_enero <- tc1_atenea_enero %>%
+  select(NIU, CODIGO_DANE_NIU)
+
+
+# Extraer los primeros 5 caracteres del CODIGO_DANE_NIU para hacer el cruce
+df_atenea_enero <- df_atenea_enero %>%
+  mutate(COD_MUNICIPIO = as.numeric(substr(CODIGO_DANE_NIU, 1, 5)))
+
+
+# Realizar el cruce con QA_TTC1_DIVIPOLA para agregar el nombre del municipio
+df_atenea_enero <- df_atenea_enero %>%
+  left_join(QA_TTC1_DIVIPOLA %>% 
+              mutate(TC1_COD_MUNICIPIO = as.numeric(TC1_COD_MUNICIPIO)) %>%
+              select(TC1_COD_MUNICIPIO, TC1_MUNICIPIO) %>%
+              distinct(TC1_COD_MUNICIPIO, .keep_all = TRUE),
+            by = c("COD_MUNICIPIO" = "TC1_COD_MUNICIPIO"))
+
+
+# Eliminar la columna temporal COD_MUNICIPIO si no la necesitas
+df_atenea_enero <- df_atenea_enero %>%
+  select(NIU, CODIGO_DANE_NIU, TC1_MUNICIPIO)
+
+# Ver las primeras filas
+head(df_atenea_enero)
+
+# Ver todos los municipios únicos de df_atenea_enero
+municipios_unicos <- df_atenea_enero %>%
+  select(TC1_MUNICIPIO) %>%
+  distinct() %>%
+  arrange(TC1_MUNICIPIO)
+
+print(municipios_unicos, n = Inf)  # Mostrar todos los municipios
+
+
+
+# Ver resumen
+cat("Total de registros:", nrow(df_atenea_enero), "\n")
+
+# Leer archivo municipios_grupos
+municipios_grupos <- suppressWarnings(read_csv("DATA/ATENEA/municipios_grupos.csv",
+                                               show_col_types = FALSE,
+                                               locale = locale(encoding = "Latin1")))
+
+print(municipios_grupos, n = Inf)  # Mostrar todos los municipios
+
 
