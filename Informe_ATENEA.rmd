@@ -1,0 +1,28 @@
+---
+title: "Informe Indicador Calidad del Servicio ATENEA"
+author: "Edwin Silva Salas -  Profesionas P1 Gestión de Información - BASE DE DATOS"
+date: "2025-11-18"
+output: pdf_document
+---
+
+## Introducción
+
+Este informe presenta un análisis comparativo de los indicadores de calidad del servicio de CENTRALES ELÉCTRICAS DE NORTE DE SANTANDER (CENS), enfocado en evaluar el impacto de la incorporación de diferentes zonas del proyecto ATENEA en el cálculo de los indicadores.
+
+El estudio contempla múltiples escenarios de análisis, variando la inclusión de municipios, grupos de activos y usuarios identificados como zonas específicas. El objetivo principal es determinar cómo la adición o exclusión de una o varias zonas pertenecientes al proyecto ATENEA afecta los valores finales de los indicadores de calidad del servicio.
+
+Mediante este análisis de sensibilidad, se busca identificar:
+
+- El comportamiento de los indicadores ante la inclusión progresiva de zonas ATENEA
+- Las variaciones en los resultados según la combinación de municipios y grupos de activos considerados
+- El impacto relativo de cada zona en el indicador global de calidad del servicio
+- Escenarios óptimos para la evaluación y seguimiento de la calidad del servicio en el contexto del proyecto ATENEA
+
+Este enfoque permitirá una mejor comprensión de la composición del indicador y facilitará la toma de decisiones estratégicas respecto a la gestión de la calidad del servicio en las diferentes áreas de operación de CENS.
+
+
+## Lectura o carga de archivos 
+
+
+
+
