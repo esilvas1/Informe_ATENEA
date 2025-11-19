@@ -1,6 +1,10 @@
 ---
-title: "Informe Indicador Calidad del Servicio ATENEA periodo (2024)"
-author: "Edwin Silva Salas - Profesional P1 Gestión de Información - CIENCIA DE DATOS"
+title: "INFORME TÉCNICO - Indicador de Calidad del Servicio - Proyecto ATENEA - Período 2024"
+author: |
+  **Edwin Silva Salas**  
+  _Profesional P1 - Gestión de Información_  
+  _Estudiante de Ciencia de Datos_  
+  Pontificia Universidad Javeriana
 date: "`r format(Sys.Date(), '%d de %B de %Y')`"
 output: 
   pdf_document:
@@ -8,6 +12,8 @@ output:
     toc: true
     toc_depth: 3
     number_sections: true
+    includes:
+      in_header: !expr if(file.exists("header.tex")) "header.tex"
 params:
   grupos_seleccionados: !r c(1)
 ---
@@ -479,8 +485,10 @@ Este informe ha sido desarrollado utilizando tecnologías de análisis de datos 
 
 Este informe es completamente reproducible, permitiendo su actualización automática con nuevos datos manteniendo la misma estructura y análisis estadísticos.
 
-```{r logo_final, echo=FALSE, out.width="20%", fig.align="center"}
+```{r logos_encabezado, echo=FALSE, fig.show='hold', out.width='25%'}
 knitr::include_graphics("pontificia-universidad.png")
+knitr::include_graphics("logo-grupo-epm.png")
+
 ```
 
 ---
