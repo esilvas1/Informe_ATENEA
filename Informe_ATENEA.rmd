@@ -1,27 +1,490 @@
 ---
-title: "Informe Indicador Calidad del Servicio ATENEA"
-author: "Edwin Silva Salas -  Profesionas P1 Gestión de Información - BASE DE DATOS"
-date: "2025-11-18"
-output: pdf_document
+title: "Informe Indicador Calidad del Servicio ATENEA periodo (2024)"
+author: "Edwin Silva Salas - Profesional P1 Gestión de Información - CIENCIA DE DATOS"
+date: "`r format(Sys.Date(), '%d de %B de %Y')`"
+output: 
+  pdf_document:
+    latex_engine: xelatex
+    toc: true
+    toc_depth: 3
+    number_sections: true
+params:
+  grupos_seleccionados: !r c(1)
 ---
 
-## Introducción
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE, fig.width = 10, fig.height = 6)
+```
 
-Este informe presenta un análisis comparativo de los indicadores de calidad del servicio de CENTRALES ELÉCTRICAS DE NORTE DE SANTANDER (CENS), enfocado en evaluar el impacto de la incorporación de diferentes zonas del proyecto ATENEA en el cálculo de los indicadores.
+```{r cargar_librerias, include=FALSE}
+# Cargar librerías necesarias
+library(dplyr)
+library(readr)
+library(ggplot2)
+library(knitr)
+library(tidyr)
+```
+
+```{r definir_variables, include=FALSE}
+# Definir los meses
+meses <- c("ENE", "FEB", "MAR", "ABR", "MAY", "JUN", "JUL", "AGO", "SEP", "OCT", "NOV", "DIC")
+nombres_meses <- c("Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
+                   "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre")
+
+# Leer archivo de grupos
+municipios_grupos <- suppressWarnings(read_csv("DATA/ATENEA/municipios_grupos.csv",
+                                               show_col_types = FALSE,
+                                               locale = locale(encoding = "Latin1")))
+
+# Leer QA_TTC1_DIVIPOLA
+QA_TTC1_DIVIPOLA <- read_csv("DATA/CENS/QA_TTC1_DIVIPOLA.CSV",
+                             show_col_types = FALSE,
+                             locale = locale(encoding = "Latin1"))
+```
+
+```{r funciones, include=FALSE}
+# Función para calcular SAIDI de un mes específico
+calcular_saidi_mes <- function(mes, incluir_grupos = NULL) {
+  
+  mes_abrev <- meses[mes]
+  nombre_mes <- nombres_meses[mes]
+  
+  # Archivos CENS
+  cs2_cens_file <- paste0("DATA/CENS/2024/CS2_", mes_abrev, "_2024_OR_604.CSV")
+  tc1_cens_file <- paste0("DATA/CENS/2024/TC1_OR_604_", mes_abrev, "_2024.csv")
+  
+  # Archivos ATENEA
+  mes_num <- sprintf("%02d", mes)
+  cs2_atenea_file <- paste0("DATA/ATENEA/2024/2024_", mes_num, "_AFA_FORMATO_CS2.csv")
+  tc1_atenea_file <- paste0("DATA/ATENEA/2024/2024_", mes_num, "_AFA_FORMATO_TC1.csv")
+  
+  # Leer archivos CENS
+  cs2_cens <- suppressWarnings(read_csv(cs2_cens_file,
+                                        show_col_types = FALSE,
+                                        locale = locale(encoding = "Latin1")))
+  
+  tc1_cens <- suppressWarnings(read_csv(tc1_cens_file,
+                                        show_col_types = FALSE,
+                                        locale = locale(encoding = "Latin1")))
+  
+  # Calcular SAIDI base (sin ATENEA)
+  cs2_cens_subset <- cs2_cens %>%
+    select(NIU, DIUM) %>%
+    distinct()
+  
+  total_dium_base <- sum(cs2_cens_subset$DIUM, na.rm = TRUE)
+  saidi_base <- total_dium_base / nrow(tc1_cens)
+  
+  # Si no hay grupos a incluir, retornar solo el SAIDI base
+  if (is.null(incluir_grupos)) {
+    return(list(
+      mes = nombre_mes,
+      saidi_base = saidi_base,
+      usuarios_base = nrow(tc1_cens),
+      dium_base = total_dium_base
+    ))
+  }
+  
+  # Leer archivos ATENEA
+  if (!file.exists(cs2_atenea_file) || !file.exists(tc1_atenea_file)) {
+    return(NULL)
+  }
+  
+  cs2_atenea <- suppressWarnings(read_csv(cs2_atenea_file,
+                                          show_col_types = FALSE,
+                                          locale = locale(encoding = "Latin1")))
+  
+  tc1_atenea <- suppressWarnings(read_csv(tc1_atenea_file,
+                                          show_col_types = FALSE,
+                                          locale = locale(encoding = "Latin1")))
+  
+  # Identificar NIUs de los grupos seleccionados
+  tc1_con_muni <- tc1_atenea %>%
+    select(NIU, CODIGO_DANE_NIU) %>%
+    mutate(COD_MUNICIPIO = as.numeric(substr(CODIGO_DANE_NIU, 1, 5)))
+  
+  tc1_atenea_con_grupo <- tc1_con_muni %>%
+    left_join(municipios_grupos %>%
+                mutate(COD_MUNICIPIO = as.numeric(COD_MUNICIPIO)) %>%
+                select(COD_MUNICIPIO, Grupo) %>%
+                distinct(COD_MUNICIPIO, .keep_all = TRUE),
+              by = "COD_MUNICIPIO") %>%
+    filter(!is.na(Grupo) & Grupo %in% incluir_grupos)
+  
+  nius_grupos <- tc1_atenea_con_grupo$NIU
+  
+  # Filtrar CS2 de ATENEA
+  cs2_atenea_grupos <- cs2_atenea %>%
+    filter(NIU %in% nius_grupos) %>%
+    select(NIU, DIUM)
+  
+  # Combinar CS2
+  cs2_cens_agrupado <- cs2_cens_subset %>%
+    group_by(NIU) %>%
+    summarise(DIUM = sum(DIUM, na.rm = TRUE), .groups = "drop")
+  
+  cs2_atenea_agrupado <- cs2_atenea_grupos %>%
+    group_by(NIU) %>%
+    summarise(DIUM = sum(DIUM, na.rm = TRUE), .groups = "drop")
+  
+  cs2_combinado <- bind_rows(cs2_cens_agrupado, cs2_atenea_agrupado)
+  
+  # Contar usuarios
+  usuarios_base_cens <- nrow(tc1_cens)
+  usuarios_atenea_grupos <- nrow(tc1_atenea_con_grupo)
+  usuarios_total <- usuarios_base_cens + usuarios_atenea_grupos
+  
+  # Calcular SAIDI con grupos
+  total_dium_con_grupos <- sum(cs2_combinado$DIUM, na.rm = TRUE)
+  saidi_con_grupos <- total_dium_con_grupos / usuarios_total
+  
+  return(list(
+    mes = nombre_mes,
+    grupos_incluidos = paste(incluir_grupos, collapse = ", "),
+    saidi_base = saidi_base,
+    saidi_con_grupos = saidi_con_grupos,
+    diferencia = saidi_con_grupos - saidi_base,
+    diferencia_porcentual = ((saidi_con_grupos - saidi_base) / saidi_base) * 100,
+    usuarios_base = usuarios_base_cens,
+    usuarios_con_grupos = usuarios_total,
+    usuarios_agregados = usuarios_atenea_grupos,
+    dium_base = total_dium_base,
+    dium_con_grupos = total_dium_con_grupos,
+    dium_agregado = total_dium_con_grupos - total_dium_base
+  ))
+}
+
+# Función para analizar escenarios
+analizar_escenarios <- function(grupos_seleccionados) {
+  resultados <- data.frame()
+  
+  for (mes in 1:12) {
+    resultado <- calcular_saidi_mes(mes, grupos_seleccionados)
+    
+    if (!is.null(resultado)) {
+      resultados <- bind_rows(resultados, as.data.frame(resultado))
+    }
+  }
+  
+  return(resultados)
+}
+```
+
+```{r ejecutar_analisis, include=FALSE}
+# Ejecutar análisis con los grupos seleccionados
+escenario_analizado <- analizar_escenarios(params$grupos_seleccionados)
+
+# Obtener información de grupos
+grupos_info <- municipios_grupos %>%
+  filter(Grupo %in% params$grupos_seleccionados) %>%
+  left_join(QA_TTC1_DIVIPOLA %>%
+              mutate(COD_MUNICIPIO = as.numeric(TC1_COD_MUNICIPIO)) %>%
+              select(COD_MUNICIPIO, TC1_MUNICIPIO) %>%
+              distinct(),
+            by = c("COD_MUNICIPIO" = "COD_MUNICIPIO"))
+```
+
+# Introducción
+
+Este informe presenta un análisis comparativo de los indicadores de calidad del servicio de **CENTRALES ELÉCTRICAS DE NORTE DE SANTANDER (CENS)**, enfocado en evaluar el impacto de la incorporación de diferentes zonas del proyecto ATENEA en el cálculo de los indicadores.
 
 El estudio contempla múltiples escenarios de análisis, variando la inclusión de municipios, grupos de activos y usuarios identificados como zonas específicas. El objetivo principal es determinar cómo la adición o exclusión de una o varias zonas pertenecientes al proyecto ATENEA afecta los valores finales de los indicadores de calidad del servicio.
 
-Mediante este análisis de sensibilidad, se busca identificar:
+## Objetivos
 
-- El comportamiento de los indicadores ante la inclusión progresiva de zonas ATENEA
-- Las variaciones en los resultados según la combinación de municipios y grupos de activos considerados
-- El impacto relativo de cada zona en el indicador global de calidad del servicio
-- Escenarios óptimos para la evaluación y seguimiento de la calidad del servicio en el contexto del proyecto ATENEA
+- Evaluar el comportamiento de los indicadores ante la inclusión progresiva de zonas ATENEA
+- Analizar las variaciones en los resultados según la combinación de municipios y grupos de activos considerados
+- Medir el impacto relativo de cada zona en el indicador global de calidad del servicio
+- Identificar escenarios óptimos para la evaluación y seguimiento de la calidad del servicio
 
-Este enfoque permitirá una mejor comprensión de la composición del indicador y facilitará la toma de decisiones estratégicas respecto a la gestión de la calidad del servicio en las diferentes áreas de operación de CENS.
+# Escenario Analizado
 
+## Grupos Incluidos
 
-## Lectura o carga de archivos 
+```{r tabla_grupos, echo=FALSE}
+kable(grupos_info %>%
+        select(Grupo, TC1_MUNICIPIO, COD_MUNICIPIO) %>%
+        arrange(Grupo, TC1_MUNICIPIO),
+      col.names = c("Grupo", "Municipio", "Código DANE"),
+      caption = "Municipios incluidos en el análisis")
+```
+
+**Grupos seleccionados:** `r paste(params$grupos_seleccionados, collapse = ", ")`
+
+**Total de municipios:** `r nrow(grupos_info)`
+
+# Resultados del Análisis
+
+## Resumen Ejecutivo
+
+```{r resumen_ejecutivo, echo=FALSE}
+resumen <- escenario_analizado %>%
+  summarise(
+    saidi_base_promedio = mean(saidi_base, na.rm = TRUE),
+    saidi_con_grupos_promedio = mean(saidi_con_grupos, na.rm = TRUE),
+    diferencia_promedio = mean(diferencia, na.rm = TRUE),
+    diferencia_porcentual_promedio = mean(diferencia_porcentual, na.rm = TRUE),
+    usuarios_base_promedio = mean(usuarios_base, na.rm = TRUE),
+    usuarios_agregados_total = mean(usuarios_agregados, na.rm = TRUE)
+  )
+
+cat("SAIDI Promedio Base (sin ATENEA):", round(resumen$saidi_base_promedio, 4), "horas\n")
+cat("SAIDI Promedio con Grupos:", round(resumen$saidi_con_grupos_promedio, 4), "horas\n")
+cat("Diferencia Promedio:", round(resumen$diferencia_promedio, 4), "horas\n")
+cat("Variación Porcentual Promedio:", round(resumen$diferencia_porcentual_promedio, 2), "%\n")
+cat("Usuarios Base CENS:", round(resumen$usuarios_base_promedio, 0), "\n")
+cat("Usuarios ATENEA Agregados:", round(resumen$usuarios_agregados_total, 0), "\n")
+```
+
+## Resultados Mensuales Detallados
+
+```{r tabla_resultados, echo=FALSE}
+tabla_resultados <- escenario_analizado %>%
+  arrange(match(mes, nombres_meses)) %>%
+  mutate(
+    saidi_base_acum = cumsum(saidi_base),
+    saidi_con_grupos_acum = cumsum(saidi_con_grupos)
+  ) %>%
+  select(mes, saidi_base, saidi_base_acum, saidi_con_grupos, saidi_con_grupos_acum, 
+         diferencia, diferencia_porcentual, usuarios_base, usuarios_agregados) %>%
+  mutate(
+    saidi_base = round(saidi_base, 4),
+    saidi_base_acum = round(saidi_base_acum, 4),
+    saidi_con_grupos = round(saidi_con_grupos, 4),
+    saidi_con_grupos_acum = round(saidi_con_grupos_acum, 4),
+    diferencia = round(diferencia, 4),
+    diferencia_porcentual = round(diferencia_porcentual, 2)
+  )
+
+kable(tabla_resultados,
+      col.names = c("Mes", "SAIDI Base", "SAIDI Base Acum.", "SAIDI con Grupos", 
+                    "SAIDI Grupos Acum.", "Diferencia", "Variación %", 
+                    "Usuarios Base", "Usuarios Agregados"),
+      caption = "Comparación mensual de indicadores SAIDI")
+```
+
+# Análisis Gráfico
+
+## Comparación SAIDI: Base vs Con Grupos ATENEA
+
+```{r grafico_comparacion, echo=FALSE, fig.width=12, fig.height=6}
+# Preparar datos para gráfico
+datos_grafico <- escenario_analizado %>%
+  select(mes, saidi_base, saidi_con_grupos) %>%
+  pivot_longer(cols = c(saidi_base, saidi_con_grupos),
+               names_to = "Escenario",
+               values_to = "SAIDI") %>%
+  mutate(
+    Escenario = ifelse(Escenario == "saidi_base", "Base (CENS)", "Con Grupos ATENEA"),
+    mes = factor(mes, levels = nombres_meses)
+  )
+
+# Crear gráfico de líneas
+ggplot(datos_grafico, aes(x = mes, y = SAIDI, color = Escenario, group = Escenario)) +
+  geom_line(size = 1.2) +
+  geom_point(size = 3) +
+  labs(
+    title = "Comparación SAIDI Mensual: Escenario Base vs Con Grupos ATENEA",
+    subtitle = paste("Grupos incluidos:", paste(params$grupos_seleccionados, collapse = ", ")),
+    x = "Mes",
+    y = "SAIDI (horas)",
+    color = "Escenario"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(hjust = 0.5, face = "bold", size = 14),
+    plot.subtitle = element_text(hjust = 0.5, size = 10),
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    legend.position = "bottom"
+  ) +
+  scale_color_manual(values = c("Base (CENS)" = "#2E86AB", "Con Grupos ATENEA" = "#A23B72"))
+```
+
+## SAIDI Acumulado: Base vs Con Grupos ATENEA
+
+```{r grafico_acumulado, echo=FALSE, fig.width=12, fig.height=6}
+# Calcular SAIDI acumulado
+datos_acumulado <- escenario_analizado %>%
+  arrange(match(mes, nombres_meses)) %>%
+  mutate(
+    saidi_base_acum = cumsum(saidi_base),
+    saidi_con_grupos_acum = cumsum(saidi_con_grupos)
+  ) %>%
+  select(mes, saidi_base_acum, saidi_con_grupos_acum) %>%
+  pivot_longer(cols = c(saidi_base_acum, saidi_con_grupos_acum),
+               names_to = "Escenario",
+               values_to = "SAIDI_Acumulado") %>%
+  mutate(
+    Escenario = ifelse(Escenario == "saidi_base_acum", "Base (CENS)", "Con Grupos ATENEA"),
+    mes = factor(mes, levels = nombres_meses)
+  )
+
+# Crear gráfico de líneas acumulado
+ggplot(datos_acumulado, aes(x = mes, y = SAIDI_Acumulado, color = Escenario, group = Escenario)) +
+  geom_line(size = 1.2) +
+  geom_point(size = 3) +
+  labs(
+    title = "SAIDI Acumulado por Mes: Escenario Base vs Con Grupos ATENEA",
+    subtitle = paste("Grupos incluidos:", paste(params$grupos_seleccionados, collapse = ", ")),
+    x = "Mes",
+    y = "SAIDI Acumulado (horas)",
+    color = "Escenario"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(hjust = 0.5, face = "bold", size = 14),
+    plot.subtitle = element_text(hjust = 0.5, size = 10),
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    legend.position = "bottom"
+  ) +
+  scale_color_manual(values = c("Base (CENS)" = "#2E86AB", "Con Grupos ATENEA" = "#A23B72"))
+```
+
+## Variación Porcentual por Mes
+
+```{r grafico_variacion, echo=FALSE, fig.width=12, fig.height=6}
+ggplot(escenario_analizado, aes(x = factor(mes, levels = nombres_meses), y = diferencia_porcentual)) +
+  geom_bar(stat = "identity", fill = "#F18F01", alpha = 0.8) +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "red") +
+  labs(
+    title = "Variación Porcentual del SAIDI por Mes",
+    subtitle = "Impacto de la inclusión de grupos ATENEA",
+    x = "Mes",
+    y = "Variación Porcentual (%)"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(hjust = 0.5, face = "bold", size = 14),
+    plot.subtitle = element_text(hjust = 0.5, size = 10),
+    axis.text.x = element_text(angle = 45, hjust = 1)
+  ) +
+  geom_text(aes(label = paste0(round(diferencia_porcentual, 2), "%")), 
+            vjust = -0.5, size = 3)
+```
+
+## Evolución de Usuarios
+
+```{r grafico_usuarios, echo=FALSE, fig.width=12, fig.height=6}
+datos_usuarios <- escenario_analizado %>%
+  select(mes, usuarios_base, usuarios_con_grupos) %>%
+  pivot_longer(cols = c(usuarios_base, usuarios_con_grupos),
+               names_to = "Tipo",
+               values_to = "Usuarios") %>%
+  mutate(
+    Tipo = ifelse(Tipo == "usuarios_base", "Base CENS", "Total con ATENEA"),
+    mes = factor(mes, levels = nombres_meses)
+  )
+
+ggplot(datos_usuarios, aes(x = mes, y = Usuarios, fill = Tipo)) +
+  geom_bar(stat = "identity", position = "dodge", alpha = 0.8) +
+  labs(
+    title = "Comparación de Número de Usuarios por Mes",
+    subtitle = "Base CENS vs Total con grupos ATENEA",
+    x = "Mes",
+    y = "Número de Usuarios",
+    fill = "Tipo"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(hjust = 0.5, face = "bold", size = 14),
+    plot.subtitle = element_text(hjust = 0.5, size = 10),
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    legend.position = "bottom"
+  ) +
+  scale_fill_manual(values = c("Base CENS" = "#06AED5", "Total con ATENEA" = "#DD1C1A")) +
+  scale_y_continuous(labels = scales::comma)
+```
+
+## Diferencia Absoluta de SAIDI
+
+```{r grafico_diferencia, echo=FALSE, fig.width=12, fig.height=6}
+ggplot(escenario_analizado, aes(x = factor(mes, levels = nombres_meses), y = diferencia)) +
+  geom_bar(stat = "identity", fill = "#6A994E", alpha = 0.8) +
+  labs(
+    title = "Diferencia Absoluta de SAIDI por Mes",
+    subtitle = "SAIDI con Grupos - SAIDI Base (en horas)",
+    x = "Mes",
+    y = "Diferencia (horas)"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(hjust = 0.5, face = "bold", size = 14),
+    plot.subtitle = element_text(hjust = 0.5, size = 10),
+    axis.text.x = element_text(angle = 45, hjust = 1)
+  ) +
+  geom_text(aes(label = round(diferencia, 4)), vjust = -0.5, size = 3)
+```
+
+# Conclusiones
+
+```{r conclusiones_auto, echo=FALSE, results='asis'}
+# Calcular estadísticas para conclusiones
+variacion_max <- max(escenario_analizado$diferencia_porcentual, na.rm = TRUE)
+variacion_min <- min(escenario_analizado$diferencia_porcentual, na.rm = TRUE)
+mes_max <- escenario_analizado$mes[which.max(escenario_analizado$diferencia_porcentual)]
+mes_min <- escenario_analizado$mes[which.min(escenario_analizado$diferencia_porcentual)]
+usuarios_promedio <- mean(escenario_analizado$usuarios_agregados, na.rm = TRUE)
+
+cat("1. La inclusión de los grupos ATENEA", paste(params$grupos_seleccionados, collapse = ", "), 
+    "genera una variación promedio del", round(resumen$diferencia_porcentual_promedio, 2), 
+    "% en el indicador SAIDI.\n\n")
+
+cat("2. La mayor variación se observa en", mes_max, "con un", round(variacion_max, 2), 
+    "%, mientras que la menor variación ocurre en", mes_min, "con un", round(variacion_min, 2), "%.\n\n")
+
+cat("3. Se agregaron en promedio", round(usuarios_promedio, 0), 
+    "usuarios ATENEA por mes al sistema CENS.\n\n")
+
+cat("4. El SAIDI promedio base es de", round(resumen$saidi_base_promedio, 4), 
+    "horas, y con la inclusión de grupos ATENEA aumenta a", 
+    round(resumen$saidi_con_grupos_promedio, 4), "horas.\n\n")
+```
+
+# Recomendaciones
+
+- Evaluar la viabilidad operativa de incorporar los grupos analizados considerando el impacto en los indicadores de calidad
+- Realizar análisis detallados de las causas de las interrupciones en las zonas ATENEA para implementar planes de mejora
+- Considerar la implementación gradual de grupos según su impacto en los indicadores
+- Establecer planes de contingencia y mejora para las zonas que presenten mayor impacto negativo
+
+---
+
+# Información Técnica del Informe
+
+Este informe ha sido desarrollado utilizando tecnologías de análisis de datos avanzadas y herramientas de reproducibilidad científica.
+
+**Autor:** Edwin Silva Salas  
+**Formación Académica:** Estudiante de Ciencia de Datos - Pontificia Universidad Javeriana
+
+## Tecnologías Utilizadas
+
+**Entorno de Desarrollo:**
+
+- **RStudio**: IDE (Integrated Development Environment) para desarrollo en R
+- **R**: Lenguaje de programación estadístico (versión `r R.version.string`)
+- **RMarkdown**: Sistema de documentación reproducible que combina código R con texto narrativo
+
+**Librerías Principales:**
+
+- **Tidyverse**: Colección de paquetes para ciencia de datos que incluye:
+  - `dplyr`: Manipulación y transformación de datos
+  - `readr`: Lectura eficiente de archivos CSV
+  - `ggplot2`: Visualización de datos con gráficos de alta calidad
+  - `tidyr`: Organización y reestructuración de datos
+- **knitr**: Generación de reportes dinámicos y tablas formateadas
+
+**Motor de Renderizado:**
+
+- **XeLaTeX**: Motor LaTeX para generación de documentos PDF con soporte completo de Unicode
+
+Este informe es completamente reproducible, permitiendo su actualización automática con nuevos datos manteniendo la misma estructura y análisis estadísticos.
+
+```{r logo_final, echo=FALSE, out.width="20%", fig.align="center"}
+knitr::include_graphics("pontificia-universidad.png")
+```
+
+---
+
 
 
 
