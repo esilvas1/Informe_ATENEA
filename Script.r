@@ -1,3 +1,4 @@
+# nolint start: line_length_linter, object_name_linter, trailing_whitespace_linter.
 
 # Cargar librerías necesarias
 library(dplyr)
@@ -5,7 +6,7 @@ library(readr)
 
 # Definir los meses
 meses <- c("ENE", "FEB", "MAR", "ABR", "MAY", "JUN", "JUL", "AGO", "SEP", "OCT", "NOV", "DIC")
-nombres_meses <- c("Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", 
+nombres_meses <- c("Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
                    "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre")
 
 # Crear un dataframe vacío para almacenar los resultados
@@ -80,10 +81,12 @@ tc1_atenea_enero <- suppressWarnings(read_csv("DATA/ATENEA/2024/2024_01_AFA_FORM
 df_atenea_enero <- tc1_atenea_enero %>%
   select(NIU, CODIGO_DANE_NIU)
 
-
 # Extraer los primeros 5 caracteres del CODIGO_DANE_NIU para hacer el cruce
 df_atenea_enero <- df_atenea_enero %>%
   mutate(COD_MUNICIPIO = as.numeric(substr(CODIGO_DANE_NIU, 1, 5)))
+
+df_atenea_enero <- df_atenea_enero %>%
+  select(NIU, COD_MUNICIPIO)
 
 
 # Realizar el cruce con QA_TTC1_DIVIPOLA para agregar el nombre del municipio
@@ -95,31 +98,30 @@ df_atenea_enero <- df_atenea_enero %>%
             by = c("COD_MUNICIPIO" = "TC1_COD_MUNICIPIO"))
 
 
-# Eliminar la columna temporal COD_MUNICIPIO si no la necesitas
-df_atenea_enero <- df_atenea_enero %>%
-  select(NIU, CODIGO_DANE_NIU, TC1_MUNICIPIO)
-
-# Ver las primeras filas
-head(df_atenea_enero)
-
-# Ver todos los municipios únicos de df_atenea_enero
-municipios_unicos <- df_atenea_enero %>%
-  select(TC1_MUNICIPIO) %>%
-  distinct() %>%
-  arrange(TC1_MUNICIPIO)
-
-print(municipios_unicos, n = Inf)  # Mostrar todos los municipios
 
 
-
-# Ver resumen
-cat("Total de registros:", nrow(df_atenea_enero), "\n")
 
 # Leer archivo municipios_grupos
 municipios_grupos <- suppressWarnings(read_csv("DATA/ATENEA/municipios_grupos.csv",
                                                show_col_types = FALSE,
                                                locale = locale(encoding = "Latin1")))
 
-print(municipios_grupos, n = Inf)  # Mostrar todos los municipios
 
+
+# Realizar el cruce con municipios_grupos para agregar el grupo al municipio
+df_atenea_enero <- df_atenea_enero %>%
+  left_join(municipios_grupos %>%
+              mutate(COD_MUNICIPIO = as.numeric(COD_MUNICIPIO)) %>%
+              select(COD_MUNICIPIO, Grupo) %>%
+              distinct(COD_MUNICIPIO, .keep_all = TRUE),
+            by = c("COD_MUNICIPIO" = "COD_MUNICIPIO"))
+
+df_atenea_enero  <- df_atenea_enero %>%
+  filter(!is.na(Grupo))
+
+df_atenea_enero
+
+
+
+# nolint end
 
