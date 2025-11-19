@@ -121,7 +121,186 @@ df_atenea_enero  <- df_atenea_enero %>%
 
 df_atenea_enero
 
+# === ANÁLISIS DE ESCENARIOS POR GRUPOS ===
 
+# Función para calcular SAIDI de un mes específico
+calcular_saidi_mes <- function(mes, incluir_grupos = NULL) {
+  
+  mes_abrev <- meses[mes]
+  nombre_mes <- nombres_meses[mes]
+  
+  # Archivos CENS
+  cs2_cens_file <- paste0("DATA/CENS/2024/CS2_", mes_abrev, "_2024_OR_604.CSV")
+  tc1_cens_file <- paste0("DATA/CENS/2024/TC1_OR_604_", mes_abrev, "_2024.csv")
+  
+  # Archivos ATENEA
+  mes_num <- sprintf("%02d", mes)
+  cs2_atenea_file <- paste0("DATA/ATENEA/2024/2024_", mes_num, "_AFA_FORMATO_CS2.csv")
+  tc1_atenea_file <- paste0("DATA/ATENEA/2024/2024_", mes_num, "_AFA_FORMATO_TC1.csv")
+  
+  # Leer archivos CENS
+  cs2_cens <- suppressWarnings(read_csv(cs2_cens_file,
+                                        show_col_types = FALSE,
+                                        locale = locale(encoding = "Latin1")))
+  
+  tc1_cens <- suppressWarnings(read_csv(tc1_cens_file,
+                                        show_col_types = FALSE,
+                                        locale = locale(encoding = "Latin1")))
+  
+  # Calcular SAIDI base (sin ATENEA)
+  cs2_cens_subset <- cs2_cens %>%
+    select(NIU, DIUM) %>%
+    distinct()
+  
+  total_dium_base <- sum(cs2_cens_subset$DIUM, na.rm = TRUE)
+  saidi_base <- total_dium_base / nrow(tc1_cens)
+  
+  # Si no hay grupos a incluir, retornar solo el SAIDI base
+  if (is.null(incluir_grupos)) {
+    return(list(
+      mes = nombre_mes,
+      saidi_base = saidi_base,
+      usuarios_base = nrow(tc1_cens),
+      dium_base = total_dium_base
+    ))
+  }
+  
+  # Leer archivos ATENEA
+  if (!file.exists(cs2_atenea_file) || !file.exists(tc1_atenea_file)) {
+    cat("Advertencia: Archivos ATENEA no encontrados para", nombre_mes, "\n")
+    return(NULL)
+  }
+  
+  cs2_atenea <- suppressWarnings(read_csv(cs2_atenea_file,
+                                          show_col_types = FALSE,
+                                          locale = locale(encoding = "Latin1")))
+  
+  tc1_atenea <- suppressWarnings(read_csv(tc1_atenea_file,
+                                          show_col_types = FALSE,
+                                          locale = locale(encoding = "Latin1")))
+  
+  # Identificar NIUs de los grupos seleccionados
+  # Primero ver cuántos registros hay en TC1 ATENEA
+  cat("  - Total NIUs en TC1 ATENEA:", nrow(tc1_atenea), "\n")
+  
+  # Preparar datos con municipio
+  tc1_con_muni <- tc1_atenea %>%
+    select(NIU, CODIGO_DANE_NIU) %>%
+    mutate(COD_MUNICIPIO = as.numeric(substr(CODIGO_DANE_NIU, 1, 5)))
+  
+  cat("  - NIUs con COD_MUNICIPIO:", nrow(tc1_con_muni), "\n")
+  
+  # Agregar grupo
+  tc1_atenea_con_grupo <- tc1_con_muni %>%
+    left_join(municipios_grupos %>%
+                mutate(COD_MUNICIPIO = as.numeric(COD_MUNICIPIO)) %>%
+                select(COD_MUNICIPIO, Grupo) %>%
+                distinct(COD_MUNICIPIO, .keep_all = TRUE),
+              by = "COD_MUNICIPIO")
+  
+  cat("  - NIUs con Grupo asignado:", sum(!is.na(tc1_atenea_con_grupo$Grupo)), "\n")
+  cat("  - Grupos encontrados:", paste(unique(tc1_atenea_con_grupo$Grupo[!is.na(tc1_atenea_con_grupo$Grupo)]), collapse = ", "), "\n")
+  cat("  - Buscando grupos:", paste(incluir_grupos, collapse = ", "), "\n")
+  
+  # Filtrar por grupos seleccionados
+  tc1_atenea_con_grupo <- tc1_atenea_con_grupo %>%
+    filter(!is.na(Grupo) & Grupo %in% incluir_grupos)
+  
+  cat("  - NIUs encontrados en grupos seleccionados:", nrow(tc1_atenea_con_grupo), "\n")
+  
+  nius_grupos <- tc1_atenea_con_grupo$NIU
+  
+  # Filtrar CS2 de ATENEA con los NIUs de los grupos seleccionados
+  cs2_atenea_grupos <- cs2_atenea %>%
+    filter(NIU %in% nius_grupos) %>%
+    select(NIU, DIUM)
+  
+  cat("  - Registros CS2 ATENEA encontrados:", nrow(cs2_atenea_grupos), "\n")
+  
+  # Combinar CS2: primero agrupar por NIU para evitar duplicados
+  cs2_cens_agrupado <- cs2_cens_subset %>%
+    group_by(NIU) %>%
+    summarise(DIUM = sum(DIUM, na.rm = TRUE), .groups = "drop")
+  
+  cs2_atenea_agrupado <- cs2_atenea_grupos %>%
+    group_by(NIU) %>%
+    summarise(DIUM = sum(DIUM, na.rm = TRUE), .groups = "drop")
+  
+  # Combinar y sumar DIUM total
+  cs2_combinado <- bind_rows(cs2_cens_agrupado, cs2_atenea_agrupado)
+  
+  # Contar usuarios base CENS
+  usuarios_base_cens <- nrow(tc1_cens)
+  
+  # Contar usuarios ATENEA de los grupos seleccionados
+  usuarios_atenea_grupos <- nrow(tc1_atenea_con_grupo)
+  
+  # Total de usuarios con grupos
+  usuarios_total <- usuarios_base_cens + usuarios_atenea_grupos
+  
+  # Calcular SAIDI con grupos incluidos
+  total_dium_con_grupos <- sum(cs2_combinado$DIUM, na.rm = TRUE)
+  saidi_con_grupos <- total_dium_con_grupos / usuarios_total
+  
+  return(list(
+    mes = nombre_mes,
+    grupos_incluidos = paste(incluir_grupos, collapse = ", "),
+    saidi_base = saidi_base,
+    saidi_con_grupos = saidi_con_grupos,
+    diferencia = saidi_con_grupos - saidi_base,
+    diferencia_porcentual = ((saidi_con_grupos - saidi_base) / saidi_base) * 100,
+    usuarios_base = usuarios_base_cens,
+    usuarios_con_grupos = usuarios_total,
+    usuarios_agregados = usuarios_atenea_grupos,
+    dium_base = total_dium_base,
+    dium_con_grupos = total_dium_con_grupos,
+    dium_agregado = total_dium_con_grupos - total_dium_base
+  ))
+}
+
+# Función para analizar escenarios múltiples
+analizar_escenarios <- function(grupos_seleccionados) {
+  
+  cat("\n=== ANÁLISIS DE ESCENARIO ===\n")
+  cat("Grupos incluidos:", paste(grupos_seleccionados, collapse = ", "), "\n\n")
+  
+  resultados <- data.frame()
+  
+  for (mes in 1:12) {
+    resultado <- calcular_saidi_mes(mes, grupos_seleccionados)
+    
+    if (!is.null(resultado)) {
+      resultados <- bind_rows(resultados, as.data.frame(resultado))
+      cat("Procesado:", resultado$mes, "\n")
+    }
+  }
+  
+  return(resultados)
+}
+
+# Ver grupos disponibles
+cat("\n=== GRUPOS DISPONIBLES ===\n")
+grupos_disponibles <- unique(municipios_grupos$Grupo)
+print(grupos_disponibles)
+
+# === EJEMPLOS DE USO ===
+
+# IMPORTANTE: Los grupos son NÚMEROS, no texto
+# Grupos disponibles: 1, 2, 3, 4, 5, 6, 7, 8, 9
+
+# Ejemplo 1: Analizar con el grupo 1 (VALLEDUPAR y PUEBLO BELLO)
+escenario_1 <- analizar_escenarios(c(1))
+
+# Ejemplo 2: Analizar con múltiples grupos
+# escenario_2 <- analizar_escenarios(c(1, 2))
+
+# Ejemplo 3: Analizar con todos los grupos
+# escenario_completo <- analizar_escenarios(grupos_disponibles)
+
+# Para ejecutar un escenario específico:
+# escenario_ejemplo <- analizar_escenarios(c(1, 2, 3))
+
+print(escenario_1)
 
 # nolint end
 
