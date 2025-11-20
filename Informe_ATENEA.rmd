@@ -303,6 +303,7 @@ datos_grafico <- escenario_analizado %>%
 ggplot(datos_grafico, aes(x = mes, y = SAIDI, color = Escenario, group = Escenario)) +
   geom_line(size = 1.2) +
   geom_point(size = 3) +
+  geom_text(aes(label = round(SAIDI, 3)), vjust = -0.8, size = 2.5, show.legend = FALSE) +
   labs(
     title = "Comparación SAIDI Mensual: Escenario Base vs Con Grupos ATENEA",
     subtitle = paste("Grupos incluidos:", paste(params$grupos_seleccionados, collapse = ", ")),
@@ -343,6 +344,7 @@ datos_acumulado <- escenario_analizado %>%
 ggplot(datos_acumulado, aes(x = mes, y = SAIDI_Acumulado, color = Escenario, group = Escenario)) +
   geom_line(size = 1.2) +
   geom_point(size = 3) +
+  geom_text(aes(label = round(SAIDI_Acumulado, 2)), vjust = -0.8, size = 2.5, show.legend = FALSE) +
   labs(
     title = "SAIDI Acumulado por Mes: Escenario Base vs Con Grupos ATENEA",
     subtitle = paste("Grupos incluidos:", paste(params$grupos_seleccionados, collapse = ", ")),

@@ -302,7 +302,6 @@ escenario_1 <- analizar_escenarios(c(1))
 
 print(escenario_1)
 
-rmarkdown::render("Informe_ATENEA.Rmd", params = list(grupos_seleccionados = c(6)))
+rmarkdown::render("Informe_ATENEA.Rmd", params = list(grupos_seleccionados = c(4,5,6)))
 
 # nolint end
-
