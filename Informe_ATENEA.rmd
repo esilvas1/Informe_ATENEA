@@ -1,5 +1,18 @@
 ---
-title: "INFORME TÉCNICO - Indicador de Calidad del Servicio - Proyecto ATENEA - Período 2024"
+title: |
+  ```{r logos_encabezado, echo=FALSE, fig.show='hold', out.width='25%', fig.align='center'}
+  knitr::include_graphics("logo-grupo-epm.png")
+  ```
+  
+  \vspace{0.5cm}
+  
+  \begin{center}
+  \LARGE{\textbf{INFORME TÉCNICO}}
+  
+  \Large{\textbf{Indicador de Calidad del Servicio}}
+  
+  \Large{\textbf{Proyecto ATENEA - Período 2024}}
+  \end{center}
 author: |
   **Edwin Silva Salas**  
   _Profesional P1 - Gestión de Información_  
@@ -21,6 +34,7 @@ params:
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE, fig.width = 10, fig.height = 6)
 ```
+
 
 ```{r cargar_librerias, include=FALSE}
 # Cargar librerías necesarias
@@ -421,6 +435,166 @@ ggplot(escenario_analizado, aes(x = factor(mes, levels = nombres_meses), y = dif
   geom_text(aes(label = round(diferencia, 4)), vjust = -0.5, size = 3)
 ```
 
+
+# Análisis de Usuarios Críticos (DIU > 360 horas)
+
+```{r analisis_usuarios_criticos, echo=FALSE}
+# Leer datos de diciembre (último mes con DIU acumulado)
+cs2_atenea_dic <- suppressWarnings(read_csv("DATA/ATENEA/2024/2024_12_AFA_FORMATO_CS2.csv",
+                                             show_col_types = FALSE,
+                                             locale = locale(encoding = "Latin1")))
+
+tc1_atenea_dic <- suppressWarnings(read_csv("DATA/ATENEA/2024/2024_12_AFA_FORMATO_TC1.csv",
+                                             show_col_types = FALSE,
+                                             locale = locale(encoding = "Latin1")))
+
+# Preparar información de TC1 con municipio y grupo
+tc1_info_criticos <- tc1_atenea_dic %>%
+  select(NIU, CODIGO_DANE_NIU) %>%
+  mutate(COD_MUNICIPIO = as.numeric(substr(CODIGO_DANE_NIU, 1, 5))) %>%
+  distinct(NIU, .keep_all = TRUE) %>%
+  left_join(municipios_grupos %>%
+              mutate(COD_MUNICIPIO = as.numeric(COD_MUNICIPIO)) %>%
+              select(COD_MUNICIPIO, Grupo) %>%
+              distinct(),
+            by = "COD_MUNICIPIO") %>%
+  filter(!is.na(Grupo) & Grupo %in% params$grupos_seleccionados)
+
+# Filtrar CS2 por grupos seleccionados
+cs2_grupos_seleccionados <- cs2_atenea_dic %>%
+  inner_join(tc1_info_criticos %>% select(NIU, COD_MUNICIPIO, Grupo), by = "NIU")
+
+# Agregar información de municipio
+cs2_con_municipio <- cs2_grupos_seleccionados %>%
+  left_join(QA_TTC1_DIVIPOLA %>%
+              mutate(TC1_COD_MUNICIPIO = as.numeric(TC1_COD_MUNICIPIO)) %>%
+              select(TC1_COD_MUNICIPIO, TC1_MUNICIPIO) %>%
+              distinct(),
+            by = c("COD_MUNICIPIO" = "TC1_COD_MUNICIPIO"))
+
+# Identificar usuarios críticos (DIU > 360)
+usuarios_criticos <- cs2_con_municipio %>%
+  filter(DIU > 360) %>%
+  arrange(desc(DIU))
+
+# Calcular estadísticas
+total_usuarios_grupos <- nrow(tc1_info_criticos)
+cantidad_criticos <- nrow(usuarios_criticos)
+porcentaje_criticos <- if(total_usuarios_grupos > 0) {
+  round((cantidad_criticos / total_usuarios_grupos) * 100, 2)
+} else {
+  0
+}
+```
+
+## Resumen Ejecutivo - Usuarios Críticos
+
+```{r resumen_criticos, echo=FALSE, results='asis'}
+cat("**Total de usuarios en grupos seleccionados:**", total_usuarios_grupos, "\n\n")
+cat("**Usuarios con DIU > 360 horas:**", cantidad_criticos, "\n\n")
+cat("**Porcentaje de usuarios críticos:**", porcentaje_criticos, "%\n\n")
+
+if (cantidad_criticos > 0) {
+  cat("**DIU Mínimo:**", round(min(usuarios_criticos$DIU), 2), "horas\n\n")
+  cat("**DIU Máximo:**", round(max(usuarios_criticos$DIU), 2), "horas\n\n")
+  cat("**DIU Promedio:**", round(mean(usuarios_criticos$DIU), 2), "horas\n\n")
+  cat("**DIU Mediana:**", round(median(usuarios_criticos$DIU), 2), "horas\n\n")
+}
+```
+
+## Usuarios Críticos por Grupo
+
+```{r tabla_criticos_grupo, echo=FALSE}
+if (cantidad_criticos > 0) {
+  resumen_grupos_criticos <- usuarios_criticos %>%
+    group_by(Grupo) %>%
+    summarise(
+      Cantidad = n(),
+      DIU_Promedio = round(mean(DIU), 2),
+      DIU_Maximo = round(max(DIU), 2),
+      DIU_Minimo = round(min(DIU), 2),
+      .groups = "drop"
+    ) %>%
+    arrange(desc(Cantidad))
+  
+  kable(resumen_grupos_criticos,
+        col.names = c("Grupo", "Cantidad", "DIU Promedio", "DIU Máximo", "DIU Mínimo"),
+        caption = "Usuarios críticos por grupo")
+}
+```
+
+## Usuarios Críticos por Municipio
+
+```{r tabla_criticos_municipio, echo=FALSE}
+if (cantidad_criticos > 0) {
+  resumen_municipios_criticos <- usuarios_criticos %>%
+    filter(!is.na(TC1_MUNICIPIO)) %>%
+    group_by(TC1_MUNICIPIO, Grupo) %>%
+    summarise(
+      Cantidad = n(),
+      DIU_Promedio = round(mean(DIU), 2),
+      DIU_Maximo = round(max(DIU), 2),
+      .groups = "drop"
+    ) %>%
+    arrange(desc(Cantidad))
+  
+  kable(resumen_municipios_criticos,
+        col.names = c("Municipio", "Grupo", "Cantidad", "DIU Promedio", "DIU Máximo"),
+        caption = "Usuarios críticos por municipio")
+}
+```
+
+## Distribución de DIU - Usuarios Críticos
+
+```{r grafico_distribucion_criticos, echo=FALSE, fig.width=12, fig.height=6}
+if (cantidad_criticos > 0) {
+  ggplot(usuarios_criticos, aes(x = DIU)) +
+    geom_histogram(bins = 30, fill = "#E63946", alpha = 0.7, color = "black") +
+    geom_vline(xintercept = 360, linetype = "dashed", color = "blue", size = 1) +
+    labs(
+      title = "Distribución de DIU - Usuarios ATENEA con DIU > 360 horas",
+      subtitle = paste("Total de usuarios críticos:", cantidad_criticos, 
+                       "- Grupos:", paste(params$grupos_seleccionados, collapse = ", ")),
+      x = "DIU (horas)",
+      y = "Frecuencia"
+    ) +
+    theme_minimal() +
+    theme(
+      plot.title = element_text(hjust = 0.5, face = "bold", size = 14),
+      plot.subtitle = element_text(hjust = 0.5, size = 10)
+    ) +
+    annotate("text", x = 360, y = Inf, label = "360 horas", 
+             vjust = 2, hjust = -0.1, color = "blue")
+} else {
+  plot.new()
+  text(0.5, 0.5, "No hay usuarios con DIU > 360 horas en los grupos seleccionados", 
+       cex = 1.5, col = "gray50")
+}
+```
+
+## Top 20 Usuarios con Mayor DIU
+
+```{r tabla_top20_criticos, echo=FALSE}
+if (cantidad_criticos > 0) {
+  top_20_criticos <- head(usuarios_criticos, 20) %>%
+    select(NIU, TC1_MUNICIPIO, Grupo, DIU, DIUM) %>%
+    mutate(
+      Ranking = row_number(),
+      DIU = round(DIU, 2),
+      DIUM = round(DIUM, 2)
+    ) %>%
+    select(Ranking, NIU, TC1_MUNICIPIO, Grupo, DIU, DIUM)
+  
+  kable(top_20_criticos,
+        col.names = c("Ranking", "NIU", "Municipio", "Grupo", "DIU (horas)", "DIUM (horas)"),
+        caption = "Top 20 Usuarios ATENEA con Mayor DIU")
+} else {
+  cat("No hay usuarios con DIU > 360 horas en los grupos seleccionados\n")
+}
+```
+
+---
+
 # Conclusiones
 
 ```{r conclusiones_auto, echo=FALSE, results='asis'}
@@ -453,7 +627,6 @@ cat("4. El SAIDI promedio base es de", round(resumen$saidi_base_promedio, 4),
 - Considerar la implementación gradual de grupos según su impacto en los indicadores
 - Establecer planes de contingencia y mejora para las zonas que presenten mayor impacto negativo
 
----
 
 # Información Técnica del Informe
 
@@ -485,11 +658,11 @@ Este informe ha sido desarrollado utilizando tecnologías de análisis de datos 
 
 Este informe es completamente reproducible, permitiendo su actualización automática con nuevos datos manteniendo la misma estructura y análisis estadísticos.
 
-```{r logos_encabezado, echo=FALSE, fig.show='hold', out.width='25%'}
-knitr::include_graphics("pontificia-universidad.png")
-knitr::include_graphics("logo-grupo-epm.png")
 
+```{r logo_final, echo=FALSE, out.width='20%', fig.align='center'}
+knitr::include_graphics("pontificia-universidad.png")
 ```
+
 
 ---
 
