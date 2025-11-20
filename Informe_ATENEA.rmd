@@ -217,6 +217,142 @@ El estudio contempla múltiples escenarios de análisis, variando la inclusión 
 - Medir el impacto relativo de cada zona en el indicador global de calidad del servicio
 - Identificar escenarios óptimos para la evaluación y seguimiento de la calidad del servicio
 
+# Indicadores de Referencia (SAIDI Base)
+
+**Nota:** Esta sección presenta los indicadores SAIDI base calculados de forma independiente para CENS y ATENEA durante el año 2024. Estos valores sirven como referencia y no forman parte del análisis comparativo de escenarios.
+
+```{r calcular_saidi_base_referencia, include=FALSE}
+# Calcular SAIDI base para CENS y ATENEA (todos los usuarios, sin filtrar por grupos)
+saidi_referencia <- data.frame()
+
+for (mes in 1:12) {
+  mes_abrev <- meses[mes]
+  mes_num <- sprintf("%02d", mes)
+  nombre_mes <- nombres_meses[mes]
+  
+  # Archivos CENS
+  cs2_cens_file <- paste0("DATA/CENS/2024/CS2_", mes_abrev, "_2024_OR_604.CSV")
+  tc1_cens_file <- paste0("DATA/CENS/2024/TC1_OR_604_", mes_abrev, "_2024.csv")
+  
+  # Archivos ATENEA
+  cs2_atenea_file <- paste0("DATA/ATENEA/2024/2024_", mes_num, "_AFA_FORMATO_CS2.csv")
+  tc1_atenea_file <- paste0("DATA/ATENEA/2024/2024_", mes_num, "_AFA_FORMATO_TC1.csv")
+  
+  # Calcular SAIDI CENS
+  if (file.exists(cs2_cens_file) && file.exists(tc1_cens_file)) {
+    cs2_cens <- suppressWarnings(read_csv(cs2_cens_file, show_col_types = FALSE,
+                                          locale = locale(encoding = "Latin1")))
+    tc1_cens <- suppressWarnings(read_csv(tc1_cens_file, show_col_types = FALSE,
+                                          locale = locale(encoding = "Latin1")))
+    
+    cs2_cens_subset <- cs2_cens %>% select(NIU, DIUM) %>% distinct()
+    total_dium_cens <- sum(cs2_cens_subset$DIUM, na.rm = TRUE)
+    usuarios_cens <- nrow(tc1_cens)
+    saidi_cens <- total_dium_cens / usuarios_cens
+  } else {
+    saidi_cens <- NA
+    usuarios_cens <- NA
+  }
+  
+  # Calcular SAIDI ATENEA (todos los usuarios)
+  if (file.exists(cs2_atenea_file) && file.exists(tc1_atenea_file)) {
+    cs2_atenea <- suppressWarnings(read_csv(cs2_atenea_file, show_col_types = FALSE,
+                                            locale = locale(encoding = "Latin1")))
+    tc1_atenea <- suppressWarnings(read_csv(tc1_atenea_file, show_col_types = FALSE,
+                                            locale = locale(encoding = "Latin1")))
+    
+    cs2_atenea_subset <- cs2_atenea %>% select(NIU, DIUM) %>% distinct()
+    total_dium_atenea <- sum(cs2_atenea_subset$DIUM, na.rm = TRUE)
+    usuarios_atenea <- nrow(tc1_atenea)
+    saidi_atenea <- total_dium_atenea / usuarios_atenea
+  } else {
+    saidi_atenea <- NA
+    usuarios_atenea <- NA
+  }
+  
+  # Agregar a dataframe
+  saidi_referencia <- bind_rows(saidi_referencia, data.frame(
+    mes = nombre_mes,
+    saidi_cens = saidi_cens,
+    usuarios_cens = usuarios_cens,
+    saidi_atenea = saidi_atenea,
+    usuarios_atenea = usuarios_atenea
+  ))
+}
+```
+
+## SAIDI Base Mensual - CENS vs ATENEA
+
+```{r tabla_saidi_referencia, echo=FALSE}
+tabla_referencia <- saidi_referencia %>%
+  mutate(
+    saidi_cens = round(saidi_cens, 4),
+    saidi_atenea = round(saidi_atenea, 4),
+    usuarios_cens = round(usuarios_cens, 0),
+    usuarios_atenea = round(usuarios_atenea, 0)
+  )
+
+kable(tabla_referencia,
+      col.names = c("Mes", "SAIDI CENS", "Usuarios CENS", "SAIDI ATENEA", "Usuarios ATENEA"),
+      caption = "Indicadores SAIDI Base por Empresa - Año 2024")
+```
+
+## Comparación Gráfica SAIDI Base
+
+```{r grafico_saidi_referencia, echo=FALSE, fig.width=12, fig.height=6}
+# Preparar datos para gráfico
+datos_referencia <- saidi_referencia %>%
+  select(mes, saidi_cens, saidi_atenea) %>%
+  pivot_longer(cols = c(saidi_cens, saidi_atenea),
+               names_to = "Empresa",
+               values_to = "SAIDI") %>%
+  mutate(
+    Empresa = ifelse(Empresa == "saidi_cens", "CENS", "ATENEA"),
+    mes = factor(mes, levels = nombres_meses)
+  )
+
+# Crear gráfico de líneas
+ggplot(datos_referencia, aes(x = mes, y = SAIDI, color = Empresa, group = Empresa)) +
+  geom_line(size = 1.2) +
+  geom_point(size = 3) +
+  geom_text(aes(label = round(SAIDI, 3)), vjust = -0.8, size = 2.5, show.legend = FALSE) +
+  labs(
+    title = "Comparación SAIDI Base: CENS vs ATENEA",
+    subtitle = "Indicadores mensuales - Año 2024",
+    x = "Mes",
+    y = "SAIDI (horas)",
+    color = "Empresa"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(hjust = 0.5, face = "bold", size = 14),
+    plot.subtitle = element_text(hjust = 0.5, size = 10),
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    legend.position = "bottom"
+  ) +
+  scale_color_manual(values = c("CENS" = "#2E86AB", "ATENEA" = "#E63946"))
+```
+
+## Resumen Anual - Indicadores Base
+
+```{r resumen_referencia, echo=FALSE, results='asis'}
+saidi_cens_promedio <- mean(saidi_referencia$saidi_cens, na.rm = TRUE)
+saidi_atenea_promedio <- mean(saidi_referencia$saidi_atenea, na.rm = TRUE)
+saidi_cens_total <- sum(saidi_referencia$saidi_cens, na.rm = TRUE)
+saidi_atenea_total <- sum(saidi_referencia$saidi_atenea, na.rm = TRUE)
+usuarios_cens_promedio <- mean(saidi_referencia$usuarios_cens, na.rm = TRUE)
+usuarios_atenea_promedio <- mean(saidi_referencia$usuarios_atenea, na.rm = TRUE)
+
+cat("**SAIDI Promedio CENS:**", round(saidi_cens_promedio, 4), "horas\n\n")
+cat("**SAIDI Promedio ATENEA:**", round(saidi_atenea_promedio, 4), "horas\n\n")
+cat("**SAIDI Acumulado Anual CENS:**", round(saidi_cens_total, 2), "horas\n\n")
+cat("**SAIDI Acumulado Anual ATENEA:**", round(saidi_atenea_total, 2), "horas\n\n")
+cat("**Usuarios Promedio CENS:**", round(usuarios_cens_promedio, 0), "\n\n")
+cat("**Usuarios Promedio ATENEA:**", round(usuarios_atenea_promedio, 0), "\n\n")
+```
+
+---
+
 # Escenario Analizado
 
 ## Grupos Incluidos
