@@ -605,19 +605,53 @@ mes_max <- escenario_analizado$mes[which.max(escenario_analizado$diferencia_porc
 mes_min <- escenario_analizado$mes[which.min(escenario_analizado$diferencia_porcentual)]
 usuarios_promedio <- mean(escenario_analizado$usuarios_agregados, na.rm = TRUE)
 
-cat("1. La inclusión de los grupos ATENEA", paste(params$grupos_seleccionados, collapse = ", "), 
+# Determinar si el cambio es aumento o disminución
+diferencia_absoluta <- resumen$saidi_con_grupos_promedio - resumen$saidi_base_promedio
+cambio_texto <- ifelse(diferencia_absoluta > 0, "aumenta", "disminuye")
+impacto_texto <- ifelse(diferencia_absoluta > 0, "incremento", "reducción")
+
+# SAIDI acumulado anual
+saidi_base_anual <- sum(escenario_analizado$saidi_base, na.rm = TRUE)
+saidi_con_grupos_anual <- sum(escenario_analizado$saidi_con_grupos, na.rm = TRUE)
+diferencia_anual <- saidi_con_grupos_anual - saidi_base_anual
+variacion_anual_porcentual <- (diferencia_anual / saidi_base_anual) * 100
+
+cat("## Análisis del Indicador SAIDI\n\n")
+
+cat("1. **Impacto en SAIDI Promedio:** La inclusión de los grupos ATENEA", 
+    paste(params$grupos_seleccionados, collapse = ", "), 
     "genera una variación promedio del", round(resumen$diferencia_porcentual_promedio, 2), 
-    "% en el indicador SAIDI.\n\n")
+    "% en el indicador SAIDI mensual. El SAIDI promedio base es de", 
+    round(resumen$saidi_base_promedio, 4), "horas, y con la inclusión de grupos ATENEA", 
+    cambio_texto, "a", round(resumen$saidi_con_grupos_promedio, 4), "horas, representando un",
+    impacto_texto, "absoluto de", round(abs(diferencia_absoluta), 4), "horas.\n\n")
 
-cat("2. La mayor variación se observa en", mes_max, "con un", round(variacion_max, 2), 
-    "%, mientras que la menor variación ocurre en", mes_min, "con un", round(variacion_min, 2), "%.\n\n")
+cat("2. **SAIDI Acumulado Anual:** El SAIDI acumulado del año 2024 para el escenario base es de",
+    round(saidi_base_anual, 2), "horas, mientras que con los grupos seleccionados es de",
+    round(saidi_con_grupos_anual, 2), "horas. Esto representa una diferencia anual de",
+    round(abs(diferencia_anual), 2), "horas (",
+    ifelse(diferencia_anual > 0, "+", ""), round(variacion_anual_porcentual, 2), "%).\n\n")
 
-cat("3. Se agregaron en promedio", round(usuarios_promedio, 0), 
-    "usuarios ATENEA por mes al sistema CENS.\n\n")
+cat("3. **Variabilidad Mensual:** La mayor variación porcentual se observa en", mes_max, 
+    "con un", round(variacion_max, 2), "%, mientras que la menor variación ocurre en", 
+    mes_min, "con un", round(variacion_min, 2), "%. Esta variabilidad indica que el impacto",
+    "de los grupos ATENEA no es uniforme a lo largo del año.\n\n")
 
-cat("4. El SAIDI promedio base es de", round(resumen$saidi_base_promedio, 4), 
-    "horas, y con la inclusión de grupos ATENEA aumenta a", 
-    round(resumen$saidi_con_grupos_promedio, 4), "horas.\n\n")
+cat("4. **Usuarios Agregados:** Se incorporaron en promedio", round(usuarios_promedio, 0), 
+    "usuarios ATENEA por mes al sistema CENS, lo que representa un incremento del",
+    round((usuarios_promedio / resumen$usuarios_base_promedio) * 100, 2), 
+    "% sobre la base de usuarios existente.\n\n")
+
+# Análisis adicional sobre tendencia
+meses_con_aumento <- sum(escenario_analizado$diferencia > 0, na.rm = TRUE)
+meses_con_reduccion <- sum(escenario_analizado$diferencia < 0, na.rm = TRUE)
+
+cat("5. **Tendencia General:** De los 12 meses analizados,", meses_con_aumento, 
+    "meses presentan un aumento en el SAIDI y", meses_con_reduccion, 
+    "meses presentan una reducción al incluir los grupos ATENEA. Esto indica que",
+    ifelse(meses_con_aumento > meses_con_reduccion, 
+           "la mayoría de los meses experimentan un deterioro en el indicador con la inclusión de estos grupos.",
+           "la inclusión de estos grupos tiene un impacto mayormente positivo en el indicador."), "\n\n")
 ```
 
 # Recomendaciones
