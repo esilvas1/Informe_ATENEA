@@ -133,21 +133,14 @@ calcular_saidi_mes <- function(mes, incluir_grupos = NULL) {
   
   nius_grupos <- tc1_atenea_con_grupo$NIU
   
-  # Filtrar CS2 de ATENEA
+  # Filtrar CS2 de ATENEA y quitar duplicados (igual que CENS)
   cs2_atenea_grupos <- cs2_atenea %>%
     filter(NIU %in% nius_grupos) %>%
-    select(NIU, DIUM)
+    select(NIU, DIUM) %>%
+    distinct()
   
-  # Combinar CS2
-  cs2_cens_agrupado <- cs2_cens_subset %>%
-    group_by(NIU) %>%
-    summarise(DIUM = sum(DIUM, na.rm = TRUE), .groups = "drop")
-  
-  cs2_atenea_agrupado <- cs2_atenea_grupos %>%
-    group_by(NIU) %>%
-    summarise(DIUM = sum(DIUM, na.rm = TRUE), .groups = "drop")
-  
-  cs2_combinado <- bind_rows(cs2_cens_agrupado, cs2_atenea_agrupado)
+  # Combinar CS2 - ambos ya sin duplicados
+  cs2_combinado <- bind_rows(cs2_cens_subset, cs2_atenea_grupos)
   
   # Contar usuarios
   usuarios_base_cens <- nrow(tc1_cens)
