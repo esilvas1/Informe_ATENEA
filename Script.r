@@ -304,4 +304,149 @@ print(escenario_1)
 
 rmarkdown::render("Informe_ATENEA.Rmd", params = list(grupos_seleccionados = c(6)))
 
+########################## Writing for amount of users for each format ################################
+
+# Cargar librerías necesarias
+library(dplyr)
+library(readr)
+library(knitr)
+
+# Definir meses
+meses_abrev <- c("ENE", "FEB", "MAR", "ABR", "MAY", "JUN", "JUL", "AGO", "SEP", "OCT", "NOV", "DIC")
+meses_num <- sprintf("%02d", 1:12)
+nombres_meses <- c("Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
+                   "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre")
+
+# === PROCESAR ATENEA ===
+cat("\n=== PROCESANDO ATENEA ===\n\n")
+tabla_conteo_atenea <- data.frame()
+
+for (i in 1:12) {
+  mes_num <- meses_num[i]
+  nombre_mes <- nombres_meses[i]
+  
+  # Archivos ATENEA
+  tc1_file <- paste0("DATA/ATENEA/2024/2024_", mes_num, "_AFA_FORMATO_TC1.csv")
+  cs2_file <- paste0("DATA/ATENEA/2024/2024_", mes_num, "_AFA_FORMATO_CS2.csv")
+  
+  if (file.exists(tc1_file) && file.exists(cs2_file)) {
+    
+    # Procesar TC1 ATENEA
+    tc1_mes <- suppressWarnings(read_csv(tc1_file,
+                                         show_col_types = FALSE,
+                                         locale = locale(encoding = "Latin1")))
+    
+    tc1_filtrado <- tc1_mes %>%
+      filter(TIPO_CONEXION == "2") %>%
+      filter(!grepl("^ALPM", CODIGO_CONEXION)) %>%
+      distinct(NIU, .keep_all = TRUE)
+    
+    usuarios_tc1 <- nrow(tc1_filtrado)
+    
+    # Procesar CS2 ATENEA
+    cs2_mes <- suppressWarnings(read_csv(cs2_file,
+                                         show_col_types = FALSE,
+                                         locale = locale(encoding = "Latin1")))
+    
+    cs2_filtrado <- cs2_mes %>%
+      distinct(NIU)
+    
+    usuarios_cs2 <- nrow(cs2_filtrado)
+    
+    # Agregar a tabla ATENEA
+    tabla_conteo_atenea <- bind_rows(tabla_conteo_atenea, data.frame(
+      EMPRESA = "ATENEA",
+      AÑO = 2024,
+      MES = nombre_mes,
+      USUARIOS_TC1 = usuarios_tc1,
+      USUARIOS_CS2 = usuarios_cs2
+    ))
+    
+    cat("ATENEA -", nombre_mes, ": TC1 =", usuarios_tc1, "| CS2 =", usuarios_cs2, "\n")
+    
+  } else {
+    cat("ATENEA - Advertencia: Archivos no encontrados para", nombre_mes, "\n")
+  }
+}
+
+# === PROCESAR CENS ===
+cat("\n=== PROCESANDO CENS ===\n\n")
+tabla_conteo_cens <- data.frame()
+
+for (i in 1:12) {
+  mes_abrev <- meses_abrev[i]
+  nombre_mes <- nombres_meses[i]
+  
+  # Archivos CENS
+  tc1_file <- paste0("DATA/CENS/2024/TC1_OR_604_", mes_abrev, "_2024.csv")
+  cs2_file <- paste0("DATA/CENS/2024/CS2_", mes_abrev, "_2024_OR_604.CSV")
+  
+  if (file.exists(tc1_file) && file.exists(cs2_file)) {
+    
+    # Procesar TC1 CENS
+    tc1_mes <- suppressWarnings(read_csv(tc1_file,
+                                         show_col_types = FALSE,
+                                         locale = locale(encoding = "Latin1")))
+    
+    # Para CENS no aplicamos filtros adicionales, solo distinct
+    tc1_filtrado <- tc1_mes %>%
+      distinct(NIU, .keep_all = TRUE)
+    
+    usuarios_tc1 <- nrow(tc1_filtrado)
+    
+    # Procesar CS2 CENS
+    cs2_mes <- suppressWarnings(read_csv(cs2_file,
+                                         show_col_types = FALSE,
+                                         locale = locale(encoding = "Latin1")))
+    
+    cs2_filtrado <- cs2_mes %>%
+      select(NIU, DIUM) %>%
+      distinct()
+    
+    usuarios_cs2 <- nrow(cs2_filtrado)
+    
+    # Agregar a tabla CENS
+    tabla_conteo_cens <- bind_rows(tabla_conteo_cens, data.frame(
+      EMPRESA = "CENS",
+      AÑO = 2024,
+      MES = nombre_mes,
+      USUARIOS_TC1 = usuarios_tc1,
+      USUARIOS_CS2 = usuarios_cs2
+    ))
+    
+    cat("CENS -", nombre_mes, ": TC1 =", usuarios_tc1, "| CS2 =", usuarios_cs2, "\n")
+    
+  } else {
+    cat("CENS - Advertencia: Archivos no encontrados para", nombre_mes, "\n")
+  }
+}
+
+# === CONSOLIDAR TABLAS ===
+tabla_conteo_usuarios <- bind_rows(tabla_conteo_atenea, tabla_conteo_cens)
+
+# Mostrar tablas
+cat("\n=== TABLA CONSOLIDADA ===\n")
+print(tabla_conteo_usuarios)
+
+# Guardar en archivo CSV
+write_csv(tabla_conteo_usuarios, "DATA/tabla_conteo_usuarios_ATENEA_CENS.csv")
+cat("\n✓ Tabla guardada en: DATA/tabla_conteo_usuarios_ATENEA_CENS.csv\n")
+
+# Mostrar resumen por empresa
+cat("\n=== RESUMEN POR EMPRESA ===\n")
+resumen_empresas <- tabla_conteo_usuarios %>%
+  group_by(EMPRESA) %>%
+  summarise(
+    TC1_Promedio = round(mean(USUARIOS_TC1), 0),
+    CS2_Promedio = round(mean(USUARIOS_CS2), 0),
+    TC1_Total = sum(USUARIOS_TC1),
+    CS2_Total = sum(USUARIOS_CS2)
+  )
+print(resumen_empresas)
+
+# Vista previa
+View(head(tabla_conteo_usuarios, n = 100))
+
+
+
 # nolint end
