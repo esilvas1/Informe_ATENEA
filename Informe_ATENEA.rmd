@@ -415,6 +415,85 @@ cat("**Usuarios Promedio CENS:**", round(usuarios_cens_promedio, 0), "\n\n")
 cat("**Usuarios Promedio ATENEA:**", round(usuarios_atenea_promedio, 0), "\n\n")
 ```
 
+## Indicadores por Municipio y Grupo - ATENEA
+
+```{r tabla_municipios_grupos, echo=FALSE}
+# Leer datos del último mes disponible (diciembre) para el análisis
+cs2_atenea_anual <- suppressWarnings(read_csv("DATA/ATENEA/2024/2024_12_AFA_FORMATO_CS2.csv",
+                                               show_col_types = FALSE,
+                                               locale = locale(encoding = "Latin1")))
+
+tc1_atenea_anual <- suppressWarnings(read_csv("DATA/ATENEA/2024/2024_12_AFA_FORMATO_TC1.csv",
+                                               show_col_types = FALSE,
+                                               locale = locale(encoding = "Latin1")))
+
+# Preparar TC1 con municipio y grupo
+tc1_con_info <- tc1_atenea_anual %>%
+  select(NIU, CODIGO_DANE_NIU) %>%
+  mutate(COD_MUNICIPIO = as.numeric(substr(CODIGO_DANE_NIU, 1, 5))) %>%
+  distinct(NIU, .keep_all = TRUE) %>%
+  left_join(municipios_grupos %>%
+              mutate(COD_MUNICIPIO = as.numeric(COD_MUNICIPIO)) %>%
+              select(COD_MUNICIPIO, Municipio, Grupo),
+            by = "COD_MUNICIPIO") %>%
+  filter(!is.na(Grupo))
+
+# Calcular SAIDI y SAIFI por municipio
+indicadores_municipio <- tc1_con_info %>%
+  left_join(cs2_atenea_anual %>%
+              select(NIU, DIUM, FIUM) %>%
+              distinct(NIU, .keep_all = TRUE),
+            by = "NIU") %>%
+  group_by(COD_MUNICIPIO, Municipio, Grupo) %>%
+  summarise(
+    Total_Usuarios = n(),
+    Total_DIUM = sum(DIUM, na.rm = TRUE),
+    Total_FIUM = sum(FIUM, na.rm = TRUE),
+    SAIDI = Total_DIUM / Total_Usuarios,
+    SAIFI = Total_FIUM / Total_Usuarios,
+    .groups = "drop"
+  ) %>%
+  arrange(Grupo, Municipio)
+
+# Calcular SAIDI y SAIFI por grupo
+indicadores_grupo <- indicadores_municipio %>%
+  group_by(Grupo) %>%
+  summarise(
+    Total_Usuarios = sum(Total_Usuarios),
+    Total_DIUM = sum(Total_DIUM),
+    Total_FIUM = sum(Total_FIUM),
+    SAIDI = Total_DIUM / Total_Usuarios,
+    SAIFI = Total_FIUM / Total_Usuarios,
+    .groups = "drop"
+  )
+
+# Mostrar tabla por municipio
+tabla_municipios <- indicadores_municipio %>%
+  mutate(
+    SAIDI = round(SAIDI, 4),
+    SAIFI = round(SAIFI, 4)
+  ) %>%
+  select(Grupo, Municipio, Total_Usuarios, SAIDI, SAIFI)
+
+kable(tabla_municipios,
+      col.names = c("Grupo", "Municipio", "Usuarios", "SAIDI", "SAIFI"),
+      caption = "Indicadores SAIDI y SAIFI por Municipio - ATENEA 2024")
+
+# Mostrar tabla por grupo
+cat("\n\n")
+
+tabla_grupos <- indicadores_grupo %>%
+  mutate(
+    SAIDI = round(SAIDI, 4),
+    SAIFI = round(SAIFI, 4)
+  ) %>%
+  select(Grupo, Total_Usuarios, SAIDI, SAIFI)
+
+kable(tabla_grupos,
+      col.names = c("Grupo", "Total Usuarios", "SAIDI", "SAIFI"),
+      caption = "Indicadores SAIDI y SAIFI por Grupo - ATENEA 2024")
+```
+
 ---
 
 # Escenario Analizado
