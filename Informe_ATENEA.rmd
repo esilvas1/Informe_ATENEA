@@ -87,21 +87,25 @@ calcular_saidi_mes <- function(mes, incluir_grupos = NULL) {
                                         show_col_types = FALSE,
                                         locale = locale(encoding = "Latin1")))
   
-  # Calcular SAIDI base (sin ATENEA)
+  # Calcular SAIDI y SAIFI base (sin ATENEA)
   cs2_cens_subset <- cs2_cens %>%
-    select(NIU, DIUM) %>%
+    select(NIU, DIUM, FIUM) %>%
     distinct()
   
   total_dium_base <- sum(cs2_cens_subset$DIUM, na.rm = TRUE)
+  total_fium_base <- sum(cs2_cens_subset$FIUM, na.rm = TRUE)
   saidi_base <- total_dium_base / nrow(tc1_cens)
+  saifi_base <- total_fium_base / nrow(tc1_cens)
   
-  # Si no hay grupos a incluir, retornar solo el SAIDI base
+  # Si no hay grupos a incluir, retornar solo el SAIDI y SAIFI base
   if (is.null(incluir_grupos)) {
     return(list(
       mes = nombre_mes,
       saidi_base = saidi_base,
+      saifi_base = saifi_base,
       usuarios_base = nrow(tc1_cens),
-      dium_base = total_dium_base
+      dium_base = total_dium_base,
+      fium_base = total_fium_base
     ))
   }
   
@@ -136,7 +140,7 @@ calcular_saidi_mes <- function(mes, incluir_grupos = NULL) {
   # Filtrar CS2 de ATENEA y quitar duplicados (igual que CENS)
   cs2_atenea_grupos <- cs2_atenea %>%
     filter(NIU %in% nius_grupos) %>%
-    select(NIU, DIUM) %>%
+    select(NIU, DIUM, FIUM) %>%
     distinct()
   
   # Combinar CS2 - ambos ya sin duplicados
@@ -147,23 +151,32 @@ calcular_saidi_mes <- function(mes, incluir_grupos = NULL) {
   usuarios_atenea_grupos <- nrow(tc1_atenea_con_grupo)
   usuarios_total <- usuarios_base_cens + usuarios_atenea_grupos
   
-  # Calcular SAIDI con grupos
+  # Calcular SAIDI y SAIFI con grupos
   total_dium_con_grupos <- sum(cs2_combinado$DIUM, na.rm = TRUE)
+  total_fium_con_grupos <- sum(cs2_combinado$FIUM, na.rm = TRUE)
   saidi_con_grupos <- total_dium_con_grupos / usuarios_total
+  saifi_con_grupos <- total_fium_con_grupos / usuarios_total
   
   return(list(
     mes = nombre_mes,
     grupos_incluidos = paste(incluir_grupos, collapse = ", "),
     saidi_base = saidi_base,
+    saifi_base = saifi_base,
     saidi_con_grupos = saidi_con_grupos,
-    diferencia = saidi_con_grupos - saidi_base,
-    diferencia_porcentual = ((saidi_con_grupos - saidi_base) / saidi_base) * 100,
+    saifi_con_grupos = saifi_con_grupos,
+    diferencia_saidi = saidi_con_grupos - saidi_base,
+    diferencia_saifi = saifi_con_grupos - saifi_base,
+    diferencia_porcentual_saidi = ((saidi_con_grupos - saidi_base) / saidi_base) * 100,
+    diferencia_porcentual_saifi = ((saifi_con_grupos - saifi_base) / saifi_base) * 100,
     usuarios_base = usuarios_base_cens,
     usuarios_con_grupos = usuarios_total,
     usuarios_agregados = usuarios_atenea_grupos,
     dium_base = total_dium_base,
     dium_con_grupos = total_dium_con_grupos,
-    dium_agregado = total_dium_con_grupos - total_dium_base
+    dium_agregado = total_dium_con_grupos - total_dium_base,
+    fium_base = total_fium_base,
+    fium_con_grupos = total_fium_con_grupos,
+    fium_agregado = total_fium_con_grupos - total_fium_base
   ))
 }
 
@@ -238,12 +251,15 @@ for (mes in 1:12) {
     tc1_cens <- suppressWarnings(read_csv(tc1_cens_file, show_col_types = FALSE,
                                           locale = locale(encoding = "Latin1")))
     
-    cs2_cens_subset <- cs2_cens %>% select(NIU, DIUM) %>% distinct()
+    cs2_cens_subset <- cs2_cens %>% select(NIU, DIUM, FIUM) %>% distinct()
     total_dium_cens <- sum(cs2_cens_subset$DIUM, na.rm = TRUE)
+    total_fium_cens <- sum(cs2_cens_subset$FIUM, na.rm = TRUE)
     usuarios_cens <- nrow(tc1_cens)
     saidi_cens <- total_dium_cens / usuarios_cens
+    saifi_cens <- total_fium_cens / usuarios_cens
   } else {
     saidi_cens <- NA
+    saifi_cens <- NA
     usuarios_cens <- NA
   }
   
@@ -254,12 +270,15 @@ for (mes in 1:12) {
     tc1_atenea <- suppressWarnings(read_csv(tc1_atenea_file, show_col_types = FALSE,
                                             locale = locale(encoding = "Latin1")))
     
-    cs2_atenea_subset <- cs2_atenea %>% select(NIU, DIUM) %>% distinct()
+    cs2_atenea_subset <- cs2_atenea %>% select(NIU, DIUM, FIUM) %>% distinct()
     total_dium_atenea <- sum(cs2_atenea_subset$DIUM, na.rm = TRUE)
+    total_fium_atenea <- sum(cs2_atenea_subset$FIUM, na.rm = TRUE)
     usuarios_atenea <- nrow(tc1_atenea)
     saidi_atenea <- total_dium_atenea / usuarios_atenea
+    saifi_atenea <- total_fium_atenea / usuarios_atenea
   } else {
     saidi_atenea <- NA
+    saifi_atenea <- NA
     usuarios_atenea <- NA
   }
   
@@ -267,34 +286,38 @@ for (mes in 1:12) {
   saidi_referencia <- bind_rows(saidi_referencia, data.frame(
     mes = nombre_mes,
     saidi_cens = saidi_cens,
+    saifi_cens = saifi_cens,
     usuarios_cens = usuarios_cens,
     saidi_atenea = saidi_atenea,
+    saifi_atenea = saifi_atenea,
     usuarios_atenea = usuarios_atenea
   ))
 }
 ```
 
-## SAIDI Base Mensual - CENS vs ATENEA
+## Indicadores Base Mensuales - CENS vs ATENEA
 
 ```{r tabla_saidi_referencia, echo=FALSE}
 tabla_referencia <- saidi_referencia %>%
   mutate(
     saidi_cens = round(saidi_cens, 4),
+    saifi_cens = round(saifi_cens, 4),
     saidi_atenea = round(saidi_atenea, 4),
+    saifi_atenea = round(saifi_atenea, 4),
     usuarios_cens = round(usuarios_cens, 0),
     usuarios_atenea = round(usuarios_atenea, 0)
   )
 
 kable(tabla_referencia,
-      col.names = c("Mes", "SAIDI CENS", "Usuarios CENS", "SAIDI ATENEA", "Usuarios ATENEA"),
-      caption = "Indicadores SAIDI Base por Empresa - Año 2024")
+      col.names = c("Mes", "SAIDI CENS", "SAIFI CENS", "Usuarios CENS", "SAIDI ATENEA", "SAIFI ATENEA", "Usuarios ATENEA"),
+      caption = "Indicadores SAIDI y SAIFI Base por Empresa - Año 2024")
 ```
 
 ## Comparación Gráfica SAIDI Base
 
 ```{r grafico_saidi_referencia, echo=FALSE, fig.width=12, fig.height=6}
-# Preparar datos para gráfico
-datos_referencia <- saidi_referencia %>%
+# Preparar datos para gráfico SAIDI
+datos_referencia_saidi <- saidi_referencia %>%
   select(mes, saidi_cens, saidi_atenea) %>%
   pivot_longer(cols = c(saidi_cens, saidi_atenea),
                names_to = "Empresa",
@@ -304,8 +327,8 @@ datos_referencia <- saidi_referencia %>%
     mes = factor(mes, levels = nombres_meses)
   )
 
-# Crear gráfico de líneas
-ggplot(datos_referencia, aes(x = mes, y = SAIDI, color = Empresa, group = Empresa)) +
+# Crear gráfico de líneas SAIDI
+ggplot(datos_referencia_saidi, aes(x = mes, y = SAIDI, color = Empresa, group = Empresa)) +
   geom_line(size = 1.2) +
   geom_point(size = 3) +
   geom_text(aes(label = round(SAIDI, 3)), vjust = -0.8, size = 2.5, show.legend = FALSE) +
@@ -326,6 +349,42 @@ ggplot(datos_referencia, aes(x = mes, y = SAIDI, color = Empresa, group = Empres
   scale_color_manual(values = c("CENS" = "#2E86AB", "ATENEA" = "#E63946"))
 ```
 
+## Comparación Gráfica SAIFI Base
+
+```{r grafico_saifi_referencia, echo=FALSE, fig.width=12, fig.height=6}
+# Preparar datos para gráfico SAIFI
+datos_referencia_saifi <- saidi_referencia %>%
+  select(mes, saifi_cens, saifi_atenea) %>%
+  pivot_longer(cols = c(saifi_cens, saifi_atenea),
+               names_to = "Empresa",
+               values_to = "SAIFI") %>%
+  mutate(
+    Empresa = ifelse(Empresa == "saifi_cens", "CENS", "ATENEA"),
+    mes = factor(mes, levels = nombres_meses)
+  )
+
+# Crear gráfico de líneas SAIFI
+ggplot(datos_referencia_saifi, aes(x = mes, y = SAIFI, color = Empresa, group = Empresa)) +
+  geom_line(size = 1.2) +
+  geom_point(size = 3) +
+  geom_text(aes(label = round(SAIFI, 3)), vjust = -0.8, size = 2.5, show.legend = FALSE) +
+  labs(
+    title = "Comparación SAIFI Base: CENS vs ATENEA",
+    subtitle = "Indicadores mensuales - Año 2024",
+    x = "Mes",
+    y = "SAIFI (interrupciones)",
+    color = "Empresa"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(hjust = 0.5, face = "bold", size = 14),
+    plot.subtitle = element_text(hjust = 0.5, size = 10),
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    legend.position = "bottom"
+  ) +
+  scale_color_manual(values = c("CENS" = "#2E86AB", "ATENEA" = "#E63946"))
+```
+
 ## Resumen Anual - Indicadores Base
 
 ```{r resumen_referencia, echo=FALSE, results='asis'}
@@ -333,6 +392,12 @@ saidi_cens_promedio <- mean(saidi_referencia$saidi_cens, na.rm = TRUE)
 saidi_atenea_promedio <- mean(saidi_referencia$saidi_atenea, na.rm = TRUE)
 saidi_cens_total <- sum(saidi_referencia$saidi_cens, na.rm = TRUE)
 saidi_atenea_total <- sum(saidi_referencia$saidi_atenea, na.rm = TRUE)
+
+saifi_cens_promedio <- mean(saidi_referencia$saifi_cens, na.rm = TRUE)
+saifi_atenea_promedio <- mean(saidi_referencia$saifi_atenea, na.rm = TRUE)
+saifi_cens_total <- sum(saidi_referencia$saifi_cens, na.rm = TRUE)
+saifi_atenea_total <- sum(saidi_referencia$saifi_atenea, na.rm = TRUE)
+
 usuarios_cens_promedio <- mean(saidi_referencia$usuarios_cens, na.rm = TRUE)
 usuarios_atenea_promedio <- mean(saidi_referencia$usuarios_atenea, na.rm = TRUE)
 
@@ -340,6 +405,12 @@ cat("**SAIDI Promedio CENS:**", round(saidi_cens_promedio, 4), "horas\n\n")
 cat("**SAIDI Promedio ATENEA:**", round(saidi_atenea_promedio, 4), "horas\n\n")
 cat("**SAIDI Acumulado Anual CENS:**", round(saidi_cens_total, 2), "horas\n\n")
 cat("**SAIDI Acumulado Anual ATENEA:**", round(saidi_atenea_total, 2), "horas\n\n")
+
+cat("**SAIFI Promedio CENS:**", round(saifi_cens_promedio, 4), "interrupciones\n\n")
+cat("**SAIFI Promedio ATENEA:**", round(saifi_atenea_promedio, 4), "interrupciones\n\n")
+cat("**SAIFI Acumulado Anual CENS:**", round(saifi_cens_total, 2), "interrupciones\n\n")
+cat("**SAIFI Acumulado Anual ATENEA:**", round(saifi_atenea_total, 2), "interrupciones\n\n")
+
 cat("**Usuarios Promedio CENS:**", round(usuarios_cens_promedio, 0), "\n\n")
 cat("**Usuarios Promedio ATENEA:**", round(usuarios_atenea_promedio, 0), "\n\n")
 ```
@@ -371,45 +442,91 @@ resumen <- escenario_analizado %>%
   summarise(
     saidi_base_promedio = mean(saidi_base, na.rm = TRUE),
     saidi_con_grupos_promedio = mean(saidi_con_grupos, na.rm = TRUE),
-    diferencia_promedio = mean(diferencia, na.rm = TRUE),
-    diferencia_porcentual_promedio = mean(diferencia_porcentual, na.rm = TRUE),
+    diferencia_promedio = mean(diferencia_saidi, na.rm = TRUE),
+    diferencia_porcentual_promedio = mean(diferencia_porcentual_saidi, na.rm = TRUE),
     usuarios_base_promedio = mean(usuarios_base, na.rm = TRUE),
     usuarios_agregados_total = mean(usuarios_agregados, na.rm = TRUE)
+  )
+
+# Calcular resumen SAIFI
+resumen_saifi <- escenario_analizado %>%
+  summarise(
+    saifi_base_promedio = mean(saifi_base, na.rm = TRUE),
+    saifi_con_grupos_promedio = mean(saifi_con_grupos, na.rm = TRUE),
+    diferencia_saifi_promedio = mean(diferencia_saifi, na.rm = TRUE),
+    diferencia_porcentual_saifi_promedio = mean(diferencia_porcentual_saifi, na.rm = TRUE)
   )
 
 cat("SAIDI Promedio Base (sin ATENEA):", round(resumen$saidi_base_promedio, 4), "horas\n")
 cat("SAIDI Promedio con Grupos:", round(resumen$saidi_con_grupos_promedio, 4), "horas\n")
 cat("Diferencia Promedio:", round(resumen$diferencia_promedio, 4), "horas\n")
-cat("Variación Porcentual Promedio:", round(resumen$diferencia_porcentual_promedio, 2), "%\n")
+cat("Variación Porcentual Promedio:", round(resumen$diferencia_porcentual_promedio, 2), "%\n\n")
+
+cat("SAIFI Promedio Base (sin ATENEA):", round(resumen_saifi$saifi_base_promedio, 4), "interrupciones\n")
+cat("SAIFI Promedio con Grupos:", round(resumen_saifi$saifi_con_grupos_promedio, 4), "interrupciones\n")
+cat("Diferencia SAIFI Promedio:", round(resumen_saifi$diferencia_saifi_promedio, 4), "interrupciones\n")
+cat("Variación Porcentual SAIFI Promedio:", round(resumen_saifi$diferencia_porcentual_saifi_promedio, 2), "%\n\n")
+
 cat("Usuarios Base CENS:", round(resumen$usuarios_base_promedio, 0), "\n")
 cat("Usuarios ATENEA Agregados:", round(resumen$usuarios_agregados_total, 0), "\n")
 ```
 
 ## Resultados Mensuales Detallados
 
-```{r tabla_resultados, echo=FALSE}
-tabla_resultados <- escenario_analizado %>%
+### Indicador SAIDI
+
+```{r tabla_resultados_saidi, echo=FALSE}
+tabla_saidi <- escenario_analizado %>%
   arrange(match(mes, nombres_meses)) %>%
   mutate(
     saidi_base_acum = cumsum(saidi_base),
     saidi_con_grupos_acum = cumsum(saidi_con_grupos)
   ) %>%
   select(mes, saidi_base, saidi_base_acum, saidi_con_grupos, saidi_con_grupos_acum, 
-         diferencia, diferencia_porcentual, usuarios_base, usuarios_agregados) %>%
+         diferencia_saidi, diferencia_porcentual_saidi,
+         usuarios_base, usuarios_agregados) %>%
   mutate(
     saidi_base = round(saidi_base, 4),
     saidi_base_acum = round(saidi_base_acum, 4),
     saidi_con_grupos = round(saidi_con_grupos, 4),
     saidi_con_grupos_acum = round(saidi_con_grupos_acum, 4),
-    diferencia = round(diferencia, 4),
-    diferencia_porcentual = round(diferencia_porcentual, 2)
+    diferencia_saidi = round(diferencia_saidi, 4),
+    diferencia_porcentual_saidi = round(diferencia_porcentual_saidi, 2)
   )
 
-kable(tabla_resultados,
+kable(tabla_saidi,
       col.names = c("Mes", "SAIDI Base", "SAIDI Base Acum.", "SAIDI con Grupos", 
-                    "SAIDI Grupos Acum.", "Diferencia", "Variación %", 
+                    "SAIDI Grupos Acum.", "Diferencia", "Variación %",
                     "Usuarios Base", "Usuarios Agregados"),
-      caption = "Comparación mensual de indicadores SAIDI")
+      caption = "Comparación mensual del indicador SAIDI")
+```
+
+### Indicador SAIFI
+
+```{r tabla_resultados_saifi, echo=FALSE}
+tabla_saifi <- escenario_analizado %>%
+  arrange(match(mes, nombres_meses)) %>%
+  mutate(
+    saifi_base_acum = cumsum(saifi_base),
+    saifi_con_grupos_acum = cumsum(saifi_con_grupos)
+  ) %>%
+  select(mes, saifi_base, saifi_base_acum, saifi_con_grupos, saifi_con_grupos_acum,
+         diferencia_saifi, diferencia_porcentual_saifi,
+         usuarios_base, usuarios_agregados) %>%
+  mutate(
+    saifi_base = round(saifi_base, 4),
+    saifi_base_acum = round(saifi_base_acum, 4),
+    saifi_con_grupos = round(saifi_con_grupos, 4),
+    saifi_con_grupos_acum = round(saifi_con_grupos_acum, 4),
+    diferencia_saifi = round(diferencia_saifi, 4),
+    diferencia_porcentual_saifi = round(diferencia_porcentual_saifi, 2)
+  )
+
+kable(tabla_saifi,
+      col.names = c("Mes", "SAIFI Base", "SAIFI Base Acum.", "SAIFI con Grupos",
+                    "SAIFI Grupos Acum.", "Diferencia", "Variación %",
+                    "Usuarios Base", "Usuarios Agregados"),
+      caption = "Comparación mensual del indicador SAIFI")
 ```
 
 # Análisis Gráfico
@@ -417,8 +534,8 @@ kable(tabla_resultados,
 ## Comparación SAIDI: Base vs Con Grupos ATENEA
 
 ```{r grafico_comparacion, echo=FALSE, fig.width=12, fig.height=6}
-# Preparar datos para gráfico
-datos_grafico <- escenario_analizado %>%
+# Preparar datos para gráfico SAIDI
+datos_grafico_saidi <- escenario_analizado %>%
   select(mes, saidi_base, saidi_con_grupos) %>%
   pivot_longer(cols = c(saidi_base, saidi_con_grupos),
                names_to = "Escenario",
@@ -428,8 +545,8 @@ datos_grafico <- escenario_analizado %>%
     mes = factor(mes, levels = nombres_meses)
   )
 
-# Crear gráfico de líneas
-ggplot(datos_grafico, aes(x = mes, y = SAIDI, color = Escenario, group = Escenario)) +
+# Crear gráfico de líneas SAIDI
+ggplot(datos_grafico_saidi, aes(x = mes, y = SAIDI, color = Escenario, group = Escenario)) +
   geom_line(size = 1.2) +
   geom_point(size = 3) +
   geom_text(aes(label = round(SAIDI, 3)), vjust = -0.8, size = 2.5, show.legend = FALSE) +
@@ -450,11 +567,47 @@ ggplot(datos_grafico, aes(x = mes, y = SAIDI, color = Escenario, group = Escenar
   scale_color_manual(values = c("Base (CENS)" = "#2E86AB", "Con Grupos ATENEA" = "#A23B72"))
 ```
 
+## Comparación SAIFI: Base vs Con Grupos ATENEA
+
+```{r grafico_comparacion_saifi, echo=FALSE, fig.width=12, fig.height=6}
+# Preparar datos para gráfico SAIFI
+datos_grafico_saifi <- escenario_analizado %>%
+  select(mes, saifi_base, saifi_con_grupos) %>%
+  pivot_longer(cols = c(saifi_base, saifi_con_grupos),
+               names_to = "Escenario",
+               values_to = "SAIFI") %>%
+  mutate(
+    Escenario = ifelse(Escenario == "saifi_base", "Base (CENS)", "Con Grupos ATENEA"),
+    mes = factor(mes, levels = nombres_meses)
+  )
+
+# Crear gráfico de líneas SAIFI
+ggplot(datos_grafico_saifi, aes(x = mes, y = SAIFI, color = Escenario, group = Escenario)) +
+  geom_line(size = 1.2) +
+  geom_point(size = 3) +
+  geom_text(aes(label = round(SAIFI, 3)), vjust = -0.8, size = 2.5, show.legend = FALSE) +
+  labs(
+    title = "Comparación SAIFI Mensual: Escenario Base vs Con Grupos ATENEA",
+    subtitle = paste("Grupos incluidos:", paste(params$grupos_seleccionados, collapse = ", ")),
+    x = "Mes",
+    y = "SAIFI (interrupciones)",
+    color = "Escenario"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(hjust = 0.5, face = "bold", size = 14),
+    plot.subtitle = element_text(hjust = 0.5, size = 10),
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    legend.position = "bottom"
+  ) +
+  scale_color_manual(values = c("Base (CENS)" = "#2E86AB", "Con Grupos ATENEA" = "#A23B72"))
+```
+
 ## SAIDI Acumulado: Base vs Con Grupos ATENEA
 
 ```{r grafico_acumulado, echo=FALSE, fig.width=12, fig.height=6}
 # Calcular SAIDI acumulado
-datos_acumulado <- escenario_analizado %>%
+datos_acumulado_saidi <- escenario_analizado %>%
   arrange(match(mes, nombres_meses)) %>%
   mutate(
     saidi_base_acum = cumsum(saidi_base),
@@ -469,8 +622,8 @@ datos_acumulado <- escenario_analizado %>%
     mes = factor(mes, levels = nombres_meses)
   )
 
-# Crear gráfico de líneas acumulado
-ggplot(datos_acumulado, aes(x = mes, y = SAIDI_Acumulado, color = Escenario, group = Escenario)) +
+# Crear gráfico de líneas acumulado SAIDI
+ggplot(datos_acumulado_saidi, aes(x = mes, y = SAIDI_Acumulado, color = Escenario, group = Escenario)) +
   geom_line(size = 1.2) +
   geom_point(size = 3) +
   geom_text(aes(label = round(SAIDI_Acumulado, 2)), vjust = -0.8, size = 2.5, show.legend = FALSE) +
@@ -491,10 +644,51 @@ ggplot(datos_acumulado, aes(x = mes, y = SAIDI_Acumulado, color = Escenario, gro
   scale_color_manual(values = c("Base (CENS)" = "#2E86AB", "Con Grupos ATENEA" = "#A23B72"))
 ```
 
+## SAIFI Acumulado: Base vs Con Grupos ATENEA
+
+```{r grafico_acumulado_saifi, echo=FALSE, fig.width=12, fig.height=6}
+# Calcular SAIFI acumulado
+datos_acumulado_saifi <- escenario_analizado %>%
+  arrange(match(mes, nombres_meses)) %>%
+  mutate(
+    saifi_base_acum = cumsum(saifi_base),
+    saifi_con_grupos_acum = cumsum(saifi_con_grupos)
+  ) %>%
+  select(mes, saifi_base_acum, saifi_con_grupos_acum) %>%
+  pivot_longer(cols = c(saifi_base_acum, saifi_con_grupos_acum),
+               names_to = "Escenario",
+               values_to = "SAIFI_Acumulado") %>%
+  mutate(
+    Escenario = ifelse(Escenario == "saifi_base_acum", "Base (CENS)", "Con Grupos ATENEA"),
+    mes = factor(mes, levels = nombres_meses)
+  )
+
+# Crear gráfico de líneas acumulado SAIFI
+ggplot(datos_acumulado_saifi, aes(x = mes, y = SAIFI_Acumulado, color = Escenario, group = Escenario)) +
+  geom_line(size = 1.2) +
+  geom_point(size = 3) +
+  geom_text(aes(label = round(SAIFI_Acumulado, 2)), vjust = -0.8, size = 2.5, show.legend = FALSE) +
+  labs(
+    title = "SAIFI Acumulado por Mes: Escenario Base vs Con Grupos ATENEA",
+    subtitle = paste("Grupos incluidos:", paste(params$grupos_seleccionados, collapse = ", ")),
+    x = "Mes",
+    y = "SAIFI Acumulado (interrupciones)",
+    color = "Escenario"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(hjust = 0.5, face = "bold", size = 14),
+    plot.subtitle = element_text(hjust = 0.5, size = 10),
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    legend.position = "bottom"
+  ) +
+  scale_color_manual(values = c("Base (CENS)" = "#2E86AB", "Con Grupos ATENEA" = "#A23B72"))
+```
+
 ## Variación Porcentual por Mes
 
 ```{r grafico_variacion, echo=FALSE, fig.width=12, fig.height=6}
-ggplot(escenario_analizado, aes(x = factor(mes, levels = nombres_meses), y = diferencia_porcentual)) +
+ggplot(escenario_analizado, aes(x = factor(mes, levels = nombres_meses), y = diferencia_porcentual_saidi)) +
   geom_bar(stat = "identity", fill = "#F18F01", alpha = 0.8) +
   geom_hline(yintercept = 0, linetype = "dashed", color = "red") +
   labs(
@@ -509,7 +703,7 @@ ggplot(escenario_analizado, aes(x = factor(mes, levels = nombres_meses), y = dif
     plot.subtitle = element_text(hjust = 0.5, size = 10),
     axis.text.x = element_text(angle = 45, hjust = 1)
   ) +
-  geom_text(aes(label = paste0(round(diferencia_porcentual, 2), "%")), 
+  geom_text(aes(label = paste0(round(diferencia_porcentual_saidi, 2), "%")), 
             vjust = -0.5, size = 3)
 ```
 
@@ -549,7 +743,7 @@ ggplot(datos_usuarios, aes(x = mes, y = Usuarios, fill = Tipo)) +
 ## Diferencia Absoluta de SAIDI
 
 ```{r grafico_diferencia, echo=FALSE, fig.width=12, fig.height=6}
-ggplot(escenario_analizado, aes(x = factor(mes, levels = nombres_meses), y = diferencia)) +
+ggplot(escenario_analizado, aes(x = factor(mes, levels = nombres_meses), y = diferencia_saidi)) +
   geom_bar(stat = "identity", fill = "#6A994E", alpha = 0.8) +
   labs(
     title = "Diferencia Absoluta de SAIDI por Mes",
@@ -563,7 +757,7 @@ ggplot(escenario_analizado, aes(x = factor(mes, levels = nombres_meses), y = dif
     plot.subtitle = element_text(hjust = 0.5, size = 10),
     axis.text.x = element_text(angle = 45, hjust = 1)
   ) +
-  geom_text(aes(label = round(diferencia, 4)), vjust = -0.5, size = 3)
+  geom_text(aes(label = round(diferencia_saidi, 4)), vjust = -0.5, size = 3)
 ```
 
 
@@ -730,10 +924,10 @@ if (cantidad_criticos > 0) {
 
 ```{r conclusiones_auto, echo=FALSE, results='asis'}
 # Calcular estadísticas para conclusiones
-variacion_max <- max(escenario_analizado$diferencia_porcentual, na.rm = TRUE)
-variacion_min <- min(escenario_analizado$diferencia_porcentual, na.rm = TRUE)
-mes_max <- escenario_analizado$mes[which.max(escenario_analizado$diferencia_porcentual)]
-mes_min <- escenario_analizado$mes[which.min(escenario_analizado$diferencia_porcentual)]
+variacion_max <- max(escenario_analizado$diferencia_porcentual_saidi, na.rm = TRUE)
+variacion_min <- min(escenario_analizado$diferencia_porcentual_saidi, na.rm = TRUE)
+mes_max <- escenario_analizado$mes[which.max(escenario_analizado$diferencia_porcentual_saidi)]
+mes_min <- escenario_analizado$mes[which.min(escenario_analizado$diferencia_porcentual_saidi)]
 usuarios_promedio <- mean(escenario_analizado$usuarios_agregados, na.rm = TRUE)
 
 # Determinar si el cambio es aumento o disminución
@@ -774,15 +968,64 @@ cat("4. **Usuarios Agregados:** Se incorporaron en promedio", round(usuarios_pro
     "% sobre la base de usuarios existente.\n\n")
 
 # Análisis adicional sobre tendencia
-meses_con_aumento <- sum(escenario_analizado$diferencia > 0, na.rm = TRUE)
-meses_con_reduccion <- sum(escenario_analizado$diferencia < 0, na.rm = TRUE)
+meses_con_aumento <- sum(escenario_analizado$diferencia_saidi > 0, na.rm = TRUE)
+meses_con_reduccion <- sum(escenario_analizado$diferencia_saidi < 0, na.rm = TRUE)
 
-cat("5. **Tendencia General:** De los 12 meses analizados,", meses_con_aumento, 
+cat("5. **Tendencia General SAIDI:** De los 12 meses analizados,", meses_con_aumento, 
     "meses presentan un aumento en el SAIDI y", meses_con_reduccion, 
     "meses presentan una reducción al incluir los grupos ATENEA. Esto indica que",
     ifelse(meses_con_aumento > meses_con_reduccion, 
            "la mayoría de los meses experimentan un deterioro en el indicador con la inclusión de estos grupos.",
            "la inclusión de estos grupos tiene un impacto mayormente positivo en el indicador."), "\n\n")
+
+## Análisis del Indicador SAIFI
+
+# Calcular estadísticas para SAIFI
+variacion_max_saifi <- max(escenario_analizado$diferencia_porcentual_saifi, na.rm = TRUE)
+variacion_min_saifi <- min(escenario_analizado$diferencia_porcentual_saifi, na.rm = TRUE)
+mes_max_saifi <- escenario_analizado$mes[which.max(escenario_analizado$diferencia_porcentual_saifi)]
+mes_min_saifi <- escenario_analizado$mes[which.min(escenario_analizado$diferencia_porcentual_saifi)]
+
+# Determinar si el cambio es aumento o disminución para SAIFI
+diferencia_absoluta_saifi <- resumen_saifi$saifi_con_grupos_promedio - resumen_saifi$saifi_base_promedio
+cambio_texto_saifi <- ifelse(diferencia_absoluta_saifi > 0, "aumenta", "disminuye")
+impacto_texto_saifi <- ifelse(diferencia_absoluta_saifi > 0, "incremento", "reducción")
+
+# SAIFI acumulado anual
+saifi_base_anual <- sum(escenario_analizado$saifi_base, na.rm = TRUE)
+saifi_con_grupos_anual <- sum(escenario_analizado$saifi_con_grupos, na.rm = TRUE)
+diferencia_anual_saifi <- saifi_con_grupos_anual - saifi_base_anual
+variacion_anual_porcentual_saifi <- (diferencia_anual_saifi / saifi_base_anual) * 100
+
+cat("1. **Impacto en SAIFI Promedio:** La inclusión de los grupos ATENEA", 
+    paste(params$grupos_seleccionados, collapse = ", "), 
+    "genera una variación promedio del", round(resumen_saifi$diferencia_porcentual_saifi_promedio, 2), 
+    "% en el indicador SAIFI mensual. El SAIFI promedio base es de", 
+    round(resumen_saifi$saifi_base_promedio, 4), "interrupciones, y con la inclusión de grupos ATENEA", 
+    cambio_texto_saifi, "a", round(resumen_saifi$saifi_con_grupos_promedio, 4), "interrupciones, representando un",
+    impacto_texto_saifi, "absoluto de", round(abs(diferencia_absoluta_saifi), 4), "interrupciones.\n\n")
+
+cat("2. **SAIFI Acumulado Anual:** El SAIFI acumulado del año 2024 para el escenario base es de",
+    round(saifi_base_anual, 2), "interrupciones, mientras que con los grupos seleccionados es de",
+    round(saifi_con_grupos_anual, 2), "interrupciones. Esto representa una diferencia anual de",
+    round(abs(diferencia_anual_saifi), 2), "interrupciones (",
+    ifelse(diferencia_anual_saifi > 0, "+", ""), round(variacion_anual_porcentual_saifi, 2), "%).\n\n")
+
+cat("3. **Variabilidad Mensual SAIFI:** La mayor variación porcentual se observa en", mes_max_saifi, 
+    "con un", round(variacion_max_saifi, 2), "%, mientras que la menor variación ocurre en", 
+    mes_min_saifi, "con un", round(variacion_min_saifi, 2), "%. Esta variabilidad indica que el impacto",
+    "de los grupos ATENEA en la frecuencia de interrupciones no es uniforme a lo largo del año.\n\n")
+
+# Análisis adicional sobre tendencia SAIFI
+meses_con_aumento_saifi <- sum(escenario_analizado$diferencia_saifi > 0, na.rm = TRUE)
+meses_con_reduccion_saifi <- sum(escenario_analizado$diferencia_saifi < 0, na.rm = TRUE)
+
+cat("4. **Tendencia General SAIFI:** De los 12 meses analizados,", meses_con_aumento_saifi, 
+    "meses presentan un aumento en el SAIFI y", meses_con_reduccion_saifi, 
+    "meses presentan una reducción al incluir los grupos ATENEA. Esto indica que",
+    ifelse(meses_con_aumento_saifi > meses_con_reduccion_saifi, 
+           "la mayoría de los meses experimentan un incremento en la frecuencia de interrupciones con la inclusión de estos grupos.",
+           "la inclusión de estos grupos tiene un impacto mayormente positivo en la frecuencia de interrupciones."), "\n\n")
 ```
 
 # Recomendaciones
