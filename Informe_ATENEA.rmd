@@ -385,6 +385,86 @@ ggplot(datos_referencia_saifi, aes(x = mes, y = SAIFI, color = Empresa, group = 
   scale_color_manual(values = c("CENS" = "#2E86AB", "ATENEA" = "#E63946"))
 ```
 
+## Indicadores Mensuales por Grupo Seleccionado
+
+```{r tabla_grupo_seleccionado, echo=FALSE}
+# Calcular SAIDI y SAIFI mensuales para los grupos seleccionados
+indicadores_grupo_mensual <- data.frame()
+
+for (mes in 1:12) {
+  nombre_mes <- nombres_meses[mes]
+  mes_str <- sprintf("%02d", mes)
+  
+  # Archivos del mes
+  cs2_file <- paste0("DATA/ATENEA/2024/2024_", mes_str, "_AFA_FORMATO_CS2.csv")
+  tc1_file <- paste0("DATA/ATENEA/2024/2024_", mes_str, "_AFA_FORMATO_TC1.csv")
+  
+  if (!file.exists(cs2_file) || !file.exists(tc1_file)) {
+    next
+  }
+  
+  # Leer archivos del mes
+  cs2_mes <- suppressWarnings(read_csv(cs2_file, show_col_types = FALSE, locale = locale(encoding = "Latin1")))
+  tc1_mes <- suppressWarnings(read_csv(tc1_file, show_col_types = FALSE, locale = locale(encoding = "Latin1")))
+  
+  # Identificar NIUs de los grupos seleccionados
+  tc1_grupos <- tc1_mes %>%
+    select(NIU, CODIGO_DANE_NIU) %>%
+    mutate(COD_MUNICIPIO = as.numeric(substr(CODIGO_DANE_NIU, 1, 5))) %>%
+    distinct(NIU, .keep_all = TRUE) %>%
+    left_join(municipios_grupos %>%
+                mutate(COD_MUNICIPIO = as.numeric(COD_MUNICIPIO)) %>%
+                select(COD_MUNICIPIO, Grupo),
+              by = "COD_MUNICIPIO") %>%
+    filter(!is.na(Grupo) & Grupo %in% params$grupos_seleccionados)
+  
+  # Calcular SAIDI y SAIFI del mes (eliminar duplicados considerando NIU, DIUM, FIUM)
+  cs2_grupos <- cs2_mes %>%
+    filter(NIU %in% tc1_grupos$NIU) %>%
+    select(NIU, DIUM, FIUM) %>%
+    distinct()
+  
+  total_usuarios <- nrow(tc1_grupos)
+  total_dium <- sum(cs2_grupos$DIUM, na.rm = TRUE)
+  total_fium <- sum(cs2_grupos$FIUM, na.rm = TRUE)
+  
+  saidi_mes <- total_dium / total_usuarios
+  saifi_mes <- total_fium / total_usuarios
+  
+  # Agregar al dataframe
+  indicadores_grupo_mensual <- bind_rows(indicadores_grupo_mensual, data.frame(
+    mes = nombre_mes,
+    usuarios = total_usuarios,
+    saidi = saidi_mes,
+    saifi = saifi_mes
+  ))
+}
+
+# Calcular acumulados
+indicadores_grupo_mensual <- indicadores_grupo_mensual %>%
+  arrange(match(mes, nombres_meses)) %>%
+  mutate(
+    saidi_acumulado = cumsum(saidi),
+    saifi_acumulado = cumsum(saifi)
+  )
+
+# Crear tabla formateada
+tabla_grupo <- indicadores_grupo_mensual %>%
+  mutate(
+    saidi = round(saidi, 4),
+    saidi_acumulado = round(saidi_acumulado, 4),
+    saifi = round(saifi, 4),
+    saifi_acumulado = round(saifi_acumulado, 4)
+  ) %>%
+  select(mes, usuarios, saidi, saidi_acumulado, saifi, saifi_acumulado)
+
+kable(tabla_grupo,
+      col.names = c("Mes", "Usuarios", "SAIDI Mensual", "SAIDI Acumulado", 
+                    "SAIFI Mensual", "SAIFI Acumulado"),
+      caption = paste("Indicadores SAIDI y SAIFI Mensuales - Grupos", 
+                      paste(params$grupos_seleccionados, collapse = ", ")))
+```
+
 ## Resumen Anual - Indicadores Base
 
 ```{r resumen_referencia, echo=FALSE, results='asis'}
