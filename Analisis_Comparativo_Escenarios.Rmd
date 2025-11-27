@@ -1,0 +1,685 @@
+---
+title: "Análisis Comparativo de Escenarios ATENEA"
+subtitle: "Evaluación de Riesgos e Indicadores de Calidad"
+author: "Edwin Silva Salas - Estudiante de Ciencia de Datos, Pontificia Universidad Javeriana"
+date: "`r format(Sys.Date(), '%d de %B de %Y')`"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    toc_depth: 3
+    theme: cosmo
+    highlight: tango
+    code_folding: hide
+    df_print: paged
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE,
+  warning = FALSE,
+  message = FALSE,
+  fig.width = 12,
+  fig.height = 7,
+  dpi = 300
+)
+```
+
+```{r librerias, include=FALSE}
+library(tidyverse)
+library(ggplot2)
+library(scales)
+library(knitr)
+library(DT)
+library(plotly)
+```
+
+# Introducción
+
+Este informe presenta un análisis comparativo exhaustivo de los diferentes escenarios de integración de grupos ATENEA a la red de CENS. Se evaluaron 8 escenarios diferentes considerando los indicadores de calidad SAIDI y SAIFI para el año 2024.
+
+## Objetivos del Análisis
+
+1. Comparar indicadores de calidad (SAIDI y SAIFI) entre diferentes escenarios
+2. Evaluar el impacto de agregar grupos ATENEA a la base CENS
+3. Identificar riesgos asociados a cada escenario
+4. Proporcionar recomendaciones estratégicas para la integración
+
+---
+
+# Datos del Análisis
+
+```{r cargar_datos}
+# Leer datos
+datos <- read_csv("DATA/ComparacionGRAL.csv", show_col_types = FALSE)
+
+# Preparar datos para visualización
+datos <- datos %>%
+  mutate(
+    ESCENARIO = factor(ESCENARIO, levels = c("CENS", "CENS + G4", "CENS + G5", 
+                                               "CENS + G6", "CENS + G4 + G5", 
+                                               "CENS + G4 + G6", "CENS + G5 + G6", 
+                                               "CENS + G4 + G5 + G6")),
+    Tipo_Escenario = case_when(
+      ESCENARIO == "CENS" ~ "Base",
+      str_count(ESCENARIO, "\\+") == 1 ~ "1 Grupo",
+      str_count(ESCENARIO, "\\+") == 2 ~ "2 Grupos",
+      str_count(ESCENARIO, "\\+") == 3 ~ "3 Grupos"
+    ),
+    Variacion_SAIDI = round(((SAIDI - 22.15) / 22.15) * 100, 2),
+    Variacion_SAIFI = round(((SAIFI - 6.31) / 6.31) * 100, 2)
+  )
+
+# Mostrar tabla interactiva
+datatable(datos %>% 
+            select(ESCENARIO, `Usuarios Totales`, SAIDI, SAIFI, 
+                   Variacion_SAIDI, Variacion_SAIFI, 
+                   `Usuarios Grupo`, `SAIDI Individual Grupo`, `SAIFI Individual Grupo`),
+          caption = "Tabla 1: Datos Completos de Escenarios - Año 2024",
+          options = list(pageLength = 10, scrollX = TRUE),
+          rownames = FALSE) %>%
+  formatRound(columns = c('SAIDI', 'SAIFI', 'SAIDI Individual Grupo', 'SAIFI Individual Grupo'), digits = 2) %>%
+  formatStyle(c('Variacion_SAIDI', 'Variacion_SAIFI'),
+              backgroundColor = styleInterval(c(0, 25, 50), c('#90EE90', '#FFFFE0', '#FFB347', '#FF6961')))
+```
+
+---
+
+# Análisis Gráfico
+
+## 1. Comparación de SAIDI por Escenario
+
+El SAIDI (System Average Interruption Duration Index) mide la duración promedio de las interrupciones en horas.
+
+```{r grafico_saidi, fig.height=7}
+g1 <- ggplot(datos, aes(x = ESCENARIO, y = SAIDI, fill = Tipo_Escenario)) +
+  geom_bar(stat = "identity", alpha = 0.8) +
+  geom_text(aes(label = round(SAIDI, 2)), vjust = -0.5, size = 3.5, fontface = "bold") +
+  geom_hline(yintercept = 22.15, linetype = "dashed", color = "red", size = 1) +
+  annotate("text", x = 1, y = 23.5, label = "Línea Base CENS: 22.15 hrs", 
+           color = "red", size = 4, fontface = "bold") +
+  labs(
+    title = "Comparación de SAIDI por Escenario",
+    subtitle = "Año 2024 - Impacto de inclusión de grupos ATENEA",
+    x = "Escenario",
+    y = "SAIDI (horas)",
+    fill = "Tipo de Escenario"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(hjust = 0.5, face = "bold", size = 16),
+    plot.subtitle = element_text(hjust = 0.5, size = 12),
+    axis.text.x = element_text(angle = 45, hjust = 1, size = 10),
+    legend.position = "bottom",
+    legend.title = element_text(face = "bold")
+  ) +
+  scale_fill_brewer(palette = "Set2")
+
+print(g1)
+```
+
+**Observaciones:**
+
+- El escenario base CENS tiene un SAIDI de **22.15 horas**
+- El mejor escenario con grupos ATENEA es **CENS + G4** (23.63 horas, +6.7%)
+- El peor escenario es **CENS + G4 + G5 + G6** (34.16 horas, +54.2%)
+- Todos los escenarios con G5 y/o G6 superan las 27 horas
+
+---
+
+## 2. Comparación de SAIFI por Escenario
+
+El SAIFI (System Average Interruption Frequency Index) mide la frecuencia promedio de interrupciones.
+
+```{r grafico_saifi, fig.height=7}
+g2 <- ggplot(datos, aes(x = ESCENARIO, y = SAIFI, fill = Tipo_Escenario)) +
+  geom_bar(stat = "identity", alpha = 0.8) +
+  geom_text(aes(label = round(SAIFI, 2)), vjust = -0.5, size = 3.5, fontface = "bold") +
+  geom_hline(yintercept = 6.31, linetype = "dashed", color = "red", size = 1) +
+  annotate("text", x = 1, y = 7.5, label = "Línea Base CENS: 6.31 int.", 
+           color = "red", size = 4, fontface = "bold") +
+  labs(
+    title = "Comparación de SAIFI por Escenario",
+    subtitle = "Año 2024 - Impacto de inclusión de grupos ATENEA",
+    x = "Escenario",
+    y = "SAIFI (interrupciones)",
+    fill = "Tipo de Escenario"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(hjust = 0.5, face = "bold", size = 16),
+    plot.subtitle = element_text(hjust = 0.5, size = 12),
+    axis.text.x = element_text(angle = 45, hjust = 1, size = 10),
+    legend.position = "bottom",
+    legend.title = element_text(face = "bold")
+  ) +
+  scale_fill_brewer(palette = "Set2")
+
+print(g2)
+```
+
+**Observaciones:**
+
+- El escenario base CENS tiene un SAIFI de **6.31 interrupciones**
+- El SAIFI aumenta más dramáticamente que el SAIDI
+- **CENS + G4 + G5 + G6** alcanza 17.16 interrupciones (+172%)
+- El G6 tiene el peor impacto individual en SAIFI
+
+---
+
+## 3. Variación Porcentual respecto a Base CENS
+
+```{r grafico_variacion, fig.height=7}
+datos_variacion <- datos %>%
+  filter(ESCENARIO != "CENS") %>%
+  select(ESCENARIO, Variacion_SAIDI, Variacion_SAIFI) %>%
+  pivot_longer(cols = c(Variacion_SAIDI, Variacion_SAIFI),
+               names_to = "Indicador",
+               values_to = "Variacion") %>%
+  mutate(Indicador = ifelse(Indicador == "Variacion_SAIDI", "SAIDI", "SAIFI"))
+
+g3 <- ggplot(datos_variacion, aes(x = ESCENARIO, y = Variacion, fill = Indicador)) +
+  geom_bar(stat = "identity", position = "dodge", alpha = 0.8) +
+  geom_hline(yintercept = 0, linetype = "solid", color = "black", size = 0.5) +
+  geom_text(aes(label = paste0(round(Variacion, 1), "%")), 
+            position = position_dodge(width = 0.9), vjust = -0.5, size = 3) +
+  labs(
+    title = "Variación Porcentual de Indicadores respecto a Base CENS",
+    subtitle = "Año 2024",
+    x = "Escenario",
+    y = "Variación (%)",
+    fill = "Indicador"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(hjust = 0.5, face = "bold", size = 16),
+    plot.subtitle = element_text(hjust = 0.5, size = 12),
+    axis.text.x = element_text(angle = 45, hjust = 1, size = 10),
+    legend.position = "bottom",
+    legend.title = element_text(face = "bold")
+  ) +
+  scale_fill_manual(values = c("SAIDI" = "#2E86AB", "SAIFI" = "#E63946"))
+
+print(g3)
+```
+
+**Hallazgos Clave:**
+
+- SAIFI tiene incrementos porcentuales mucho mayores que SAIDI en todos los escenarios
+- CENS + G4 es el único escenario con variaciones menores al 25% en ambos indicadores
+- Escenarios con 3 grupos alcanzan variaciones superiores al 150% en SAIFI
+
+---
+
+## 4. SAIDI vs SAIFI Individual de Grupos
+
+```{r grafico_scatter, fig.height=7}
+datos_grupos <- datos %>%
+  filter(ESCENARIO != "CENS") %>%
+  mutate(Label = str_replace(ESCENARIO, "CENS \\+ ", ""))
+
+g4 <- ggplot(datos_grupos, aes(x = `SAIDI Individual Grupo`, y = `SAIFI Individual Grupo`)) +
+  geom_point(aes(size = `Usuarios Grupo`, color = Label), alpha = 0.7) +
+  geom_text(aes(label = Label), vjust = -1.5, hjust = 0.5, size = 3.5, fontface = "bold") +
+  labs(
+    title = "SAIDI vs SAIFI Individual de Grupos ATENEA",
+    subtitle = "Tamaño del punto representa cantidad de usuarios del grupo",
+    x = "SAIDI Individual Grupo (horas)",
+    y = "SAIFI Individual Grupo (interrupciones)",
+    size = "Usuarios",
+    color = "Escenario"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(hjust = 0.5, face = "bold", size = 16),
+    plot.subtitle = element_text(hjust = 0.5, size = 12),
+    legend.position = "right"
+  ) +
+  scale_size_continuous(labels = comma, range = c(5, 15))
+
+print(g4)
+```
+
+**Análisis:**
+
+- G6 tiene los peores indicadores individuales (SAIDI: 175.26, SAIFI: 156.93)
+- G5 también presenta indicadores críticos (SAIDI: 169.66, SAIFI: 122.01)
+- G4 es relativamente mejor pero aún muy por encima de la línea base
+- La combinación de grupos diluye parcialmente el impacto individual
+
+---
+
+## 5. Impacto en Usuarios Totales
+
+```{r grafico_usuarios, fig.height=7}
+g5 <- ggplot(datos, aes(x = ESCENARIO, y = `Usuarios Totales`, fill = Tipo_Escenario)) +
+  geom_bar(stat = "identity", alpha = 0.8) +
+  geom_text(aes(label = comma(`Usuarios Totales`)), vjust = -0.5, size = 3.5) +
+  labs(
+    title = "Usuarios Totales por Escenario",
+    subtitle = "Incremento de base de usuarios con inclusión de grupos ATENEA",
+    x = "Escenario",
+    y = "Usuarios Totales",
+    fill = "Tipo de Escenario"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(hjust = 0.5, face = "bold", size = 16),
+    plot.subtitle = element_text(hjust = 0.5, size = 12),
+    axis.text.x = element_text(angle = 45, hjust = 1, size = 10),
+    legend.position = "bottom",
+    legend.title = element_text(face = "bold")
+  ) +
+  scale_y_continuous(labels = comma) +
+  scale_fill_brewer(palette = "Set2")
+
+print(g5)
+```
+
+**Impacto en Usuarios:**
+
+- Base CENS: **633,404 usuarios**
+- Escenario completo: **711,400 usuarios** (+78,000 usuarios, +12.3%)
+- G6 aporta la mayor cantidad de usuarios (28,106)
+- Integrar todos los grupos representa un aumento significativo de cobertura
+
+---
+
+## 6. Relación entre Usuarios de Grupo e Indicadores
+
+```{r grafico_relacion, fig.height=10}
+datos_panel <- datos %>%
+  filter(ESCENARIO != "CENS") %>%
+  select(ESCENARIO, SAIDI, SAIFI, `Usuarios Grupo`) %>%
+  pivot_longer(cols = c(SAIDI, SAIFI),
+               names_to = "Indicador",
+               values_to = "Valor")
+
+g6 <- ggplot(datos_panel, aes(x = `Usuarios Grupo`, y = Valor, color = Indicador)) +
+  geom_point(size = 4, alpha = 0.7) +
+  geom_smooth(method = "lm", se = TRUE, alpha = 0.2) +
+  facet_wrap(~Indicador, scales = "free_y", ncol = 1) +
+  labs(
+    title = "Relación entre Usuarios de Grupo y Indicadores de Calidad",
+    subtitle = "Tendencia lineal por indicador",
+    x = "Usuarios del Grupo ATENEA",
+    y = "Valor del Indicador",
+    color = "Indicador"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(hjust = 0.5, face = "bold", size = 16),
+    plot.subtitle = element_text(hjust = 0.5, size = 12),
+    legend.position = "none",
+    strip.text = element_text(size = 12, face = "bold")
+  ) +
+  scale_x_continuous(labels = comma)
+
+print(g6)
+```
+
+**Correlación:**
+
+- Existe una correlación positiva entre número de usuarios agregados y deterioro de indicadores
+- La pendiente es más pronunciada para SAIFI que para SAIDI
+- A mayor cantidad de usuarios agregados, mayor es el impacto negativo
+
+---
+
+# Análisis de Riesgos por Escenario
+
+## Matriz de Riesgos
+
+```{r tabla_riesgos}
+riesgos <- data.frame(
+  Escenario = c("CENS", "CENS + G4", "CENS + G5", "CENS + G6", 
+                "CENS + G4 + G5", "CENS + G4 + G6", "CENS + G5 + G6", 
+                "CENS + G4 + G5 + G6"),
+  Nivel_Riesgo = c("BASE", "BAJO-MODERADO", "ALTO", "MUY ALTO",
+                   "ALTO", "MUY ALTO", "CRÍTICO", "CRÍTICO"),
+  Viabilidad = c("Establecido", "VIABLE", "Requiere mejoras", "NO RECOMENDABLE",
+                 "Integración gradual", "Postergar", "NO VIABLE", "Solo largo plazo"),
+  Prioridad = c("-", "1", "3", "4", "2", "5", "7", "6")
+)
+
+datatable(riesgos,
+          caption = "Tabla 2: Matriz de Riesgos por Escenario",
+          options = list(pageLength = 10, dom = 't'),
+          rownames = FALSE) %>%
+  formatStyle('Nivel_Riesgo',
+              backgroundColor = styleEqual(
+                c("BASE", "BAJO-MODERADO", "ALTO", "MUY ALTO", "CRÍTICO"),
+                c("#90EE90", "#FFFFE0", "#FFB347", "#FF8C69", "#FF6961")
+              ))
+```
+
+---
+
+## Escenario BASE (CENS)
+
+:::{.alert .alert-success}
+**SAIDI:** 22.15 horas | **SAIFI:** 6.31 interrupciones  
+**Usuarios:** 633,404  
+**RIESGO:** BAJO - Línea base establecida con indicadores controlados
+:::
+
+---
+
+## Escenario CENS + G4
+
+:::{.alert .alert-info}
+**SAIDI:** 23.63 (+6.7%) | **SAIFI:** 7.71 (+22.2%)  
+**Usuarios agregados:** 27,466  
+**RIESGO:** BAJO-MODERADO
+
+**Análisis:**
+
+- Incremento moderado de SAIDI, aceptable para integración
+- SAIFI aumenta significativamente debido a alta frecuencia del G4
+- El impacto es manejable con la infraestructura actual
+
+**Recomendación:** ✅ Integración viable con planes de mejora focalizados
+:::
+
+---
+
+## Escenario CENS + G5
+
+:::{.alert .alert-warning}
+**SAIDI:** 27.12 (+22.4%) | **SAIFI:** 10.21 (+61.8%)  
+**Usuarios agregados:** 22,428  
+**RIESGO:** ALTO
+
+**Análisis:**
+
+- G5 tiene el segundo peor desempeño individual (SAIDI: 169.66, SAIFI: 122.01)
+- Deterioro significativo en ambos indicadores
+- Infraestructura del G5 requiere renovación importante
+
+**Recomendación:** ⚠️ Requiere inversión sustancial antes de integración
+:::
+
+---
+
+## Escenario CENS + G6
+
+:::{.alert .alert-danger}
+**SAIDI:** 28.66 (+29.4%) | **SAIFI:** 12.72 (+101.6%)  
+**Usuarios agregados:** 28,106  
+**RIESGO:** MUY ALTO
+
+**Análisis:**
+
+- Peor desempeño individual del G6 (SAIDI: 175.26, SAIFI: 156.93)
+- SAIFI duplica la línea base - crítico
+- Red en condiciones precarias
+
+**Recomendación:** 🚫 NO recomendable sin mejoras estructurales mayores
+:::
+
+---
+
+## Escenario CENS + G4 + G5
+
+:::{.alert .alert-warning}
+**SAIDI:** 28.35 (+28.0%) | **SAIFI:** 11.40 (+80.7%)  
+**Usuarios agregados:** 49,890  
+**RIESGO:** ALTO
+
+**Análisis:**
+
+- Efecto combinado de grupos con desempeño deficiente
+- Base de usuarios significativa agregada (casi 50,000)
+- Dilución parcial del impacto negativo por combinación
+
+**Recomendación:** ⚠️ Integración gradual con monitoreo estricto
+:::
+
+---
+
+## Escenario CENS + G4 + G6
+
+:::{.alert .alert-danger}
+**SAIDI:** 29.82 (+34.6%) | **SAIFI:** 13.80 (+118.7%)  
+**Usuarios agregados:** 55,572  
+**RIESGO:** MUY ALTO
+
+**Análisis:**
+
+- Incluye el G6 con peor desempeño
+- SAIFI supera el 100% de incremento
+- Mayor base de usuarios del proyecto afectados
+
+**Recomendación:** 🚫 Postergar integración hasta mejoras sustanciales
+:::
+
+---
+
+## Escenario CENS + G5 + G6
+
+:::{.alert .alert-danger}
+**SAIDI:** 33.22 (+49.9%) | **SAIFI:** 16.25 (+157.5%)  
+**Usuarios agregados:** 50,530  
+**RIESGO:** CRÍTICO
+
+**Análisis:**
+
+- Combinación de los dos grupos con peor desempeño
+- SAIDI incrementa casi 50%, SAIFI más de 150%
+- Indicadores alcanzan niveles inaceptables
+
+**Recomendación:** 🚫 NO VIABLE - Requiere transformación completa de infraestructura
+:::
+
+---
+
+## Escenario CENS + G4 + G5 + G6 (TODOS)
+
+:::{.alert .alert-danger}
+**SAIDI:** 34.16 (+54.2%) | **SAIFI:** 17.16 (+172.0%)  
+**Usuarios agregados:** 77,996  
+**RIESGO:** CRÍTICO
+
+**Análisis:**
+
+- Mayor deterioro en todos los indicadores
+- SAIFI casi triplica la línea base
+- Mayor base de usuarios afectados (711,400 total)
+- Representa el mayor desafío operativo
+
+**Recomendación:** 🚫 Solo viable con plan de inversión a largo plazo (5+ años)
+:::
+
+---
+
+# Resumen Ejecutivo de Riesgos
+
+## Grupos por Nivel de Riesgo
+
+```{r grupos_riesgo}
+grupos_individual <- data.frame(
+  Grupo = c("G4", "G5", "G6"),
+  SAIDI_Individual = c(57.58, 169.66, 175.26),
+  SAIFI_Individual = c(39.66, 122.01, 156.93),
+  Usuarios = c(27466, 22428, 28106),
+  Clasificacion = c("BAJO RIESGO", "ALTO RIESGO", "MUY ALTO RIESGO")
+)
+
+datatable(grupos_individual,
+          caption = "Tabla 3: Desempeño Individual por Grupo",
+          options = list(pageLength = 10, dom = 't'),
+          rownames = FALSE) %>%
+  formatRound(columns = c('SAIDI_Individual', 'SAIFI_Individual'), digits = 2) %>%
+  formatStyle('Clasificacion',
+              backgroundColor = styleEqual(
+                c("BAJO RIESGO", "ALTO RIESGO", "MUY ALTO RIESGO"),
+                c("#90EE90", "#FFB347", "#FF6961")
+              ))
+```
+
+### Caracterización por Grupo:
+
+**🟢 GRUPO 4 (BAJO RIESGO):**
+
+- Mejor desempeño relativo entre los grupos ATENEA
+- SAIDI: 57.58 horas, SAIFI: 39.66 interrupciones
+- Infraestructura relativamente mejor mantenida
+- **Acción:** Priorizar como proyecto piloto de integración
+
+**🟡 GRUPO 5 (ALTO RIESGO):**
+
+- SAIDI: 169.66 horas, SAIFI: 122.01 interrupciones
+- Requiere mejoras importantes en infraestructura
+- Menor cantidad de usuarios (22,428)
+- **Acción:** Desarrollar plan de mejora antes de integración
+
+**🔴 GRUPO 6 (MUY ALTO RIESGO):**
+
+- Peor desempeño: SAIDI: 175.26 horas, SAIFI: 156.93 interrupciones
+- Mayor cantidad de usuarios (28,106)
+- Red en condiciones críticas
+- **Acción:** Postergar indefinidamente hasta transformación completa
+
+---
+
+## Recomendaciones Estratégicas
+
+### 1️⃣ Integración por Fases
+
+**FASE 1 (Año 1-2):**
+- Integrar solo **G4** como proyecto piloto
+- Inversión: Mantenimiento correctivo y preventivo focalizado
+- Monitoreo mensual de indicadores
+- Establecer protocolos de respuesta
+
+**FASE 2 (Año 3-4):**
+- Evaluación de resultados G4
+- Si exitoso, iniciar renovación de **G5**
+- Inversión: Renovación de infraestructura media tensión + automatización
+- No integrar hasta alcanzar indicadores objetivo
+
+**FASE 3 (Año 5+):**
+- Proyecto de transformación completa para **G6**
+- Inversión: Renovación completa de red + subestaciones + digitalización
+- Considerar integración solo después de mejoras sustanciales
+
+### 2️⃣ Criterios de Decisión
+
+**Integrar un grupo solo si cumple:**
+
+- SAIDI individual < 80 horas
+- SAIFI individual < 60 interrupciones
+- Incremento combinado SAIDI < 15%
+- Incremento combinado SAIFI < 30%
+
+### 3️⃣ Inversiones Requeridas (Estimadas)
+
+```{r tabla_inversiones}
+inversiones <- data.frame(
+  Grupo = c("G4", "G5", "G6"),
+  `Tipo de Inversión` = c(
+    "Mantenimiento correctivo y preventivo",
+    "Renovación media tensión + automatización",
+    "Renovación completa + digitalización"
+  ),
+  `Plazo Estimado` = c("1-2 años", "3-4 años", "5+ años"),
+  `Nivel de Inversión` = c("Moderado", "Alto", "Muy Alto")
+)
+
+kable(inversiones, caption = "Tabla 4: Inversiones Requeridas por Grupo") %>%
+  kableExtra::kable_styling(bootstrap_options = c("striped", "hover"))
+```
+
+### 4️⃣ Monitoreo Post-Integración
+
+**Indicadores a vigilar mensualmente:**
+
+- SAIDI y SAIFI combinados
+- SAIDI y SAIFI por grupo
+- Cantidad de usuarios afectados
+- Causas de interrupciones
+- Tiempo de respuesta
+- Satisfacción del cliente
+
+**Puntos de control:**
+
+- Revisión mensual durante primer año
+- Revisión trimestral años 2-3
+- Revisión semestral posterior
+
+---
+
+## Conclusiones Finales
+
+### ✅ Hallazgos Principales
+
+1. **Ningún escenario mantiene los indicadores base de CENS** - Todos los escenarios con grupos ATENEA deterioran los indicadores de calidad
+
+2. **El impacto en SAIFI es mayor que en SAIDI** - Las interrupciones son más frecuentes de lo que son prolongadas
+
+3. **G6 es el mayor desafío** - Con indicadores individuales de SAIDI: 175.26 y SAIFI: 156.93, representa el peor desempeño
+
+4. **G4 es la mejor opción para iniciar** - Aunque deteriora indicadores, el impacto es relativamente manejable
+
+5. **La combinación de grupos no es aditiva** - El efecto combinado es menor que la suma de efectos individuales debido a dilución
+
+### 🎯 Recomendación Final
+
+**NO proceder con integración masiva.** Se recomienda:
+
+1. **Corto plazo:** Integrar solo G4 como piloto controlado
+2. **Mediano plazo:** Renovar G5 antes de considerar integración
+3. **Largo plazo:** Transformación completa de G6 como precondición
+4. **Evitar:** Cualquier combinación que incluya G5 y G6 simultáneamente
+
+### ⚠️ Riesgos de NO Actuar
+
+- Deterioro progresivo de infraestructura en grupos ATENEA
+- Aumento de costos de mantenimiento correctivo
+- Pérdida de oportunidad de integración futura
+- Impacto negativo en usuarios de grupos ATENEA
+
+### 💡 Oportunidades
+
+- Mejora progresiva de calidad en grupos ATENEA
+- Ampliación de cobertura en 78,000 usuarios
+- Estandarización de operación y mantenimiento
+- Economías de escala en gestión de red
+
+---
+
+# Información Técnica
+
+## Metodología
+
+**Indicadores Calculados:**
+
+- **SAIDI:** System Average Interruption Duration Index = Σ(DIUM sin duplicados) / Total Usuarios
+- **SAIFI:** System Average Interruption Frequency Index = Σ(FIUM sin duplicados) / Total Usuarios
+
+**Fuentes de Datos:**
+
+- Datos CENS: Formatos TC1 y CS2 mensuales 2024
+- Datos ATENEA: Formatos TC1 y CS2 mensuales 2024
+- Archivo de comparación: ComparacionGRAL.csv
+
+## Tecnologías Utilizadas
+
+- **R** `r R.version.string`
+- **RMarkdown** para generación de informe HTML interactivo
+- **ggplot2** para visualizaciones
+- **DT** para tablas interactivas
+- **tidyverse** para manipulación de datos
+
+---
+
+## Autor
+
+**Edwin Silva Salas**  
+Estudiante de Ciencia de Datos  
+Pontificia Universidad Javeriana  
+Grupo EPM
+
+---
+
+*Informe generado el: `r format(Sys.time(), '%d de %B de %Y a las %H:%M:%S')`*

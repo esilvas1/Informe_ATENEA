@@ -448,5 +448,9 @@ print(resumen_empresas)
 View(head(tabla_conteo_usuarios, n = 100))
 
 
+########################################################### GRAFICA GENERAL #########################################
 
+source("Analisis_Comparativo_Escenarios.r")
+
+rmarkdown::render("Analisis_Comparativo_Escenarios.Rmd")
 # nolint end
